@@ -11,6 +11,7 @@ import pandas as pd
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from Perfetto.trace.traceAnalysis.extract_trace_time import ns_to_cst
+from experiments.cold_start.frequency_manager import get_available_cpu_frequencies, get_available_gpu_frequencies
 
 
 class ColdStartAnalyzer:
@@ -346,6 +347,27 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到功耗数据")
         
+        # 获取CPU和GPU的可用频率范围（保持原始单位：CPU用KHz，GPU用Hz）
+        cpu_available_freqs = {}  # {cpu_id: {'min': min_freq_khz, 'max': max_freq_khz}}
+        if not cpu_freq_df.empty and 'cpu' in cpu_freq_df.columns:
+            for cpu_id in cpu_freq_df['cpu'].unique():
+                freqs = get_available_cpu_frequencies(int(cpu_id))
+                if freqs:
+                    # 保持KHz单位，不转换
+                    cpu_available_freqs[int(cpu_id)] = {
+                        'min': min(freqs),
+                        'max': max(freqs)
+                    }
+        
+        gpu_available_freqs = None  # {'min': min_freq_hz, 'max': max_freq_hz}，GPU频率用Hz
+        gpu_freqs = get_available_gpu_frequencies()
+        if gpu_freqs:
+            # 保持Hz单位，不转换
+            gpu_available_freqs = {
+                'min': min(gpu_freqs),
+                'max': max(gpu_freqs)
+            }
+        
         # 汇总结果（使用转换后的真实时间戳）
         results = {
             'cold_start_duration_ms': cold_start_duration_ms,
@@ -356,7 +378,9 @@ class ColdStartAnalyzer:
             'gpu_frequency': gpu_freq_df,
             'power': power_df,
             'start_window_start_s': -duration_extend_ns / 1e9,  # 启动区间开始（相对时间）
-            'start_window_end_s': cold_start_duration_ns / 1e9   # 启动区间结束（相对时间，即启动时长）
+            'start_window_end_s': cold_start_duration_ns / 1e9,  # 启动区间结束（相对时间，即启动时长）
+            'cpu_available_frequencies': cpu_available_freqs,  # CPU可用频率范围
+            'gpu_available_frequencies': gpu_available_freqs   # GPU可用频率范围
         }
         
         return results

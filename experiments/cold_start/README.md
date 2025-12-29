@@ -75,12 +75,12 @@ python experiments/cold_start/plot_results.py <results_dir> --output analysis.pn
 
 1. **默认调度模式**（默认）：使用系统默认的CPU/GPU频率调度策略
    ```bash
-   python experiments/cold_start/run_complete.py com.example.app
+   python experiments/cold_start/run_complete.py com.ss.android.ugc.aweme 
    ```
 
 2. **最大频率模式**：将所有CPU核心和GPU频率设置到最大值
    ```bash
-   python experiments/cold_start/run_complete.py com.example.app --max-frequency
+   python experiments/cold_start/run_complete.py com.ss.android.ugc.aweme  --max-frequency
    ```
 
 **注意**：使用`--max-frequency`模式需要：

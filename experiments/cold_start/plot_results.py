@@ -96,21 +96,32 @@ def plot_cpu_frequency(results, output_path=None):
                 # 添加半透明背景标记启动区间
                 ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
             
-            # 设置Y轴范围
-            y_min = cpu_data['frequency_mhz'].min()
-            y_max = cpu_data['frequency_mhz'].max()
-            y_range = y_max - y_min
-            
-            if y_range > 0:
-                # 如果有范围，添加10%的边距
-                y_padding = y_range * 0.1
-                ax.set_ylim(y_min - y_padding, y_max + y_padding)
-            elif y_min == y_max and y_min > 0:
-                # 如果所有值相同，设置一个小的范围
-                ax.set_ylim(y_min * 0.9, y_max * 1.1)
+            # 设置Y轴范围：使用CPU支持的频率范围（available_frequencies是KHz，需要转换为MHz）
+            cpu_available_freqs = results.get('cpu_available_frequencies', {})
+            cpu_id_int = int(cpu)
+            if cpu_id_int in cpu_available_freqs:
+                # 使用可用频率的最小值和最大值（从KHz转换为MHz）
+                y_min = cpu_available_freqs[cpu_id_int]['min'] / 1000.0  # KHz转MHz
+                y_max = cpu_available_freqs[cpu_id_int]['max'] / 1000.0  # KHz转MHz
+                y_range = y_max - y_min
+                if y_range > 0:
+                    # 添加5%的边距以便查看
+                    y_padding = y_range * 0.05
+                    ax.set_ylim(y_min - y_padding, y_max + y_padding)
+                else:
+                    ax.set_ylim(y_min * 0.95, y_max * 1.05)
             else:
-                # 如果值为0或没有数据，设置默认范围
-                ax.set_ylim(-100, 100)
+                # 如果没有可用频率信息，使用实际数据的频率范围
+                y_min = cpu_data['frequency_mhz'].min()
+                y_max = cpu_data['frequency_mhz'].max()
+                y_range = y_max - y_min
+                if y_range > 0:
+                    y_padding = y_range * 0.1
+                    ax.set_ylim(max(0, y_min - y_padding), y_max + y_padding)
+                elif y_min == y_max and y_min > 0:
+                    ax.set_ylim(max(0, y_min * 0.9), y_max * 1.1)
+                else:
+                    ax.set_ylim(0, max(100, y_max * 1.1) if y_max > 0 else 100)
         else:
             # 如果没有数据，设置默认范围
             ax.set_ylim(0, 3000)
@@ -174,6 +185,32 @@ def plot_gpu_frequency(results, output_path=None):
         if start_window_end > 0:
             # 添加半透明背景标记启动区间
             ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
+        
+        # 设置Y轴范围：使用GPU支持的频率范围（available_frequencies是Hz，需要转换为MHz）
+        gpu_available_freqs = results.get('gpu_available_frequencies')
+        if gpu_available_freqs:
+            # 使用可用频率的最小值和最大值（从Hz转换为MHz）
+            y_min = gpu_available_freqs['min'] / 1e6  # Hz转MHz
+            y_max = gpu_available_freqs['max'] / 1e6  # Hz转MHz
+            y_range = y_max - y_min
+            if y_range > 0:
+                # 添加5%的边距以便查看
+                y_padding = y_range * 0.05
+                ax.set_ylim(y_min - y_padding, y_max + y_padding)
+            else:
+                ax.set_ylim(y_min * 0.95, y_max * 1.05)
+        else:
+            # 如果没有可用频率信息，使用实际数据的频率范围
+            y_min = gpu_df['frequency_mhz'].min()
+            y_max = gpu_df['frequency_mhz'].max()
+            y_range = y_max - y_min
+            if y_range > 0:
+                y_padding = y_range * 0.1
+                ax.set_ylim(max(0, y_min - y_padding), y_max + y_padding)
+            elif y_min == y_max and y_min > 0:
+                ax.set_ylim(max(0, y_min * 0.9), y_max * 1.1)
+            else:
+                ax.set_ylim(0, max(100, y_max * 1.1) if y_max > 0 else 100)
         
         ax.set_xlabel('时间 (秒)', fontsize=12)
         ax.set_ylabel('频率 (MHz)', fontsize=12)

@@ -24,6 +24,24 @@ def get_cpu_count():
         return 8
 
 
+def get_available_cpu_frequencies(cpu_id):
+    """获取指定CPU的可用频率列表（KHz），使用scaling_available_frequencies"""
+    try:
+        result = subprocess.run(
+            ["adb", "shell", "su", "-c", f"cat /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_available_frequencies"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        freqs = result.stdout.strip().split()
+        if freqs:
+            freq_ints = [int(f) for f in freqs if f.isdigit()]
+            return freq_ints if freq_ints else None
+    except Exception as e:
+        print(f"⚠️  获取CPU {cpu_id}可用频率失败: {e}")
+    return None
+
+
 def get_max_cpu_frequency(cpu_id):
     """获取指定CPU的最大频率（KHz）"""
     try:
@@ -130,65 +148,93 @@ def set_all_cpu_to_max():
     return original_freqs
 
 
-def restore_cpu_frequency(cpu_id, original_freqs):
+def restore_cpu_frequency(cpu_id, original_freqs=None):
     """
-    恢复CPU频率设置（将min和max恢复到原始值）
+    恢复CPU频率设置（通过读取available_frequencies设置最小值和最大值）
     
     Args:
         cpu_id: CPU核心ID
-        original_freqs: 原始频率元组 (min_freq_khz, max_freq_khz)
+        original_freqs: 保留参数以兼容旧代码，但不再使用
     
     Returns:
         bool: 是否恢复成功
     """
-    if original_freqs is None or len(original_freqs) != 2:
-        return False
-    
-    original_min, original_max = original_freqs
-    if original_min is None or original_max is None:
-        return False
-    
     try:
-        # 恢复最小频率
-        subprocess.run(
-            ["adb", "shell", "su", "-c", f"echo {original_min} > /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_min_freq"],
+        # 读取可用频率列表
+        freqs = get_available_cpu_frequencies(cpu_id)
+        if not freqs:
+            print(f"⚠️  CPU {cpu_id}: 无法读取可用频率列表")
+            return False
+        
+        min_freq = min(freqs)
+        max_freq = max(freqs)
+        
+        # 设置最小频率
+        result_min = subprocess.run(
+            ["adb", "shell", "su", "-c", f"echo {min_freq} > /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_min_freq"],
             check=False,
-            capture_output=True
+            capture_output=True,
+            text=True
         )
-        # 恢复最大频率
-        subprocess.run(
-            ["adb", "shell", "su", "-c", f"echo {original_max} > /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_max_freq"],
+        if result_min.returncode != 0:
+            print(f"⚠️  CPU {cpu_id}: 设置最小频率失败 (命令返回码: {result_min.returncode})")
+            if result_min.stderr:
+                print(f"   错误信息: {result_min.stderr.strip()}")
+        
+        # 设置最大频率
+        result_max = subprocess.run(
+            ["adb", "shell", "su", "-c", f"echo {max_freq} > /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_max_freq"],
             check=False,
-            capture_output=True
+            capture_output=True,
+            text=True
         )
-        return True
+        if result_max.returncode != 0:
+            print(f"⚠️  CPU {cpu_id}: 设置最大频率失败 (命令返回码: {result_max.returncode})")
+            if result_max.stderr:
+                print(f"   错误信息: {result_max.stderr.strip()}")
+        
+        # 验证设置是否成功
+        time.sleep(0.2)  # 等待设置生效
+        actual_min, actual_max = get_current_cpu_frequencies(cpu_id)
+        if actual_min is not None and actual_max is not None:
+            if actual_min != min_freq or actual_max != max_freq:
+                print(f"⚠️  CPU {cpu_id}: 设置验证失败")
+                print(f"   期望: min={min_freq} KHz, max={max_freq} KHz")
+                print(f"   实际: min={actual_min} KHz, max={actual_max} KHz")
+                return False
+            return True
+        else:
+            print(f"⚠️  CPU {cpu_id}: 无法验证频率设置（无法读取当前频率）")
+            return False
     except Exception as e:
         print(f"⚠️  恢复CPU {cpu_id}频率失败: {e}")
         return False
 
 
-def restore_all_cpu_frequency(original_freqs):
+def restore_all_cpu_frequency(original_freqs=None):
     """
-    恢复所有CPU频率设置
+    恢复所有CPU频率设置（通过读取available_frequencies设置最小值和最大值）
     
     Args:
-        original_freqs: dict，格式为 {cpu_id: (min_freq, max_freq)}
+        original_freqs: 保留参数以兼容旧代码，但不再使用
     """
-    if not original_freqs:
-        return
-    
     cpu_count = get_cpu_count()
     print(f"\n🔧 恢复所有CPU核心频率设置（共{cpu_count}个核心）...")
     
     for cpu_id in range(cpu_count):
-        if cpu_id in original_freqs:
-            if restore_cpu_frequency(cpu_id, original_freqs[cpu_id]):
-                min_freq, max_freq = original_freqs[cpu_id]
-                print(f"  ✅ CPU {cpu_id}: 已恢复 (min: {min_freq/1000:.0f} MHz, max: {max_freq/1000:.0f} MHz)")
+        try:
+            freqs = get_available_cpu_frequencies(cpu_id)
+            if freqs:
+                min_freq = min(freqs)
+                max_freq = max(freqs)
+                if restore_cpu_frequency(cpu_id):
+                    print(f"  ✅ CPU {cpu_id}: 已恢复 (min: {min_freq/1000:.0f} MHz, max: {max_freq/1000:.0f} MHz)")
+                else:
+                    print(f"  ⚠️  CPU {cpu_id}: 恢复失败")
             else:
-                print(f"  ⚠️  CPU {cpu_id}: 恢复失败")
-        else:
-            print(f"  ⚠️  CPU {cpu_id}: 没有原始频率数据")
+                print(f"  ⚠️  CPU {cpu_id}: 无法读取可用频率列表")
+        except Exception as e:
+            print(f"  ⚠️  CPU {cpu_id}: 恢复失败: {e}")
 
 
 def find_gpu_devfreq_path():
@@ -215,14 +261,14 @@ def find_gpu_devfreq_path():
     return None
 
 
-def get_gpu_max_frequency():
-    """获取GPU最大频率（Hz）"""
+def get_available_gpu_frequencies():
+    """获取GPU的可用频率列表（Hz）"""
     gpu_path = find_gpu_devfreq_path()
     
     if gpu_path is None:
         return None
     
-    # 读取available_frequencies，取最大值
+    # 读取available_frequencies
     try:
         result = subprocess.run(
             ["adb", "shell", "su", "-c", f"cat {gpu_path}/available_frequencies"],
@@ -232,13 +278,20 @@ def get_gpu_max_frequency():
         )
         freqs = result.stdout.strip().split()
         if freqs:
-            # 转换为整数并返回最大值
+            # 转换为整数并返回列表
             freq_ints = [int(f) for f in freqs if f.isdigit()]
-            if freq_ints:
-                return max(freq_ints)
+            return freq_ints if freq_ints else None
     except:
         pass
     
+    return None
+
+
+def get_gpu_max_frequency():
+    """获取GPU最大频率（Hz）"""
+    freqs = get_available_gpu_frequencies()
+    if freqs:
+        return max(freqs)
     return None
 
 
@@ -356,58 +409,59 @@ def set_all_frequencies_to_max():
     return original_settings
 
 
-def restore_gpu_frequency(original_settings):
+def restore_gpu_frequency(original_settings=None):
     """
-    恢复GPU频率设置（将min和max恢复到原始值）
+    恢复GPU频率设置（通过读取available_frequencies设置最小值和最大值）
     
     Args:
-        original_settings: dict，格式为 {'min_freq': int, 'max_freq': int, 'gpu_path': str}
+        original_settings: 保留参数以兼容旧代码，但不再使用
     """
-    if not original_settings:
-        return
-    
-    gpu_path = original_settings.get('gpu_path')
-    original_min = original_settings.get('min_freq')
-    original_max = original_settings.get('max_freq')
-    
-    if gpu_path is None or original_min is None or original_max is None:
-        print("  ⚠️  GPU: 无法恢复，缺少原始频率数据")
+    gpu_path = find_gpu_devfreq_path()
+    if gpu_path is None:
+        print("  ⚠️  GPU: 无法找到GPU devfreq设备路径")
         return
     
     try:
+        # 读取可用频率列表
+        freqs = get_available_gpu_frequencies()
+        if not freqs:
+            print("  ⚠️  GPU: 无法读取可用频率列表")
+            return
+        
+        min_freq = min(freqs)
+        max_freq = max(freqs)
+        
         # 使用完整路径（与CPU命令保持一致，用引号包围路径避免特殊字符问题）
-        # 恢复最小频率
+        # 设置最小频率
         subprocess.run(
-            ["adb", "shell", "su", "-c", f"echo {original_min} > '{gpu_path}/scaling_min_freq'"],
+            ["adb", "shell", "su", "-c", f"echo {min_freq} > '{gpu_path}/scaling_min_freq'"],
             check=False,
             capture_output=True
         )
-        # 恢复最大频率
+        # 设置最大频率
         subprocess.run(
-            ["adb", "shell", "su", "-c", f"echo {original_max} > '{gpu_path}/scaling_max_freq'"],
+            ["adb", "shell", "su", "-c", f"echo {max_freq} > '{gpu_path}/scaling_max_freq'"],
             check=False,
             capture_output=True
         )
-        # GPU频率单位是Hz，直接显示原始值（Hz），不转换为MHz
-        # 因为GPU频率文件的单位就是Hz，比如150000表示150MHz
-        print(f"  ✅ GPU: 已恢复 (min: {original_min} Hz, max: {original_max} Hz)")
+        print(f"  ✅ GPU: 已恢复 (min: {min_freq} Hz ({min_freq/1e6:.1f} MHz), max: {max_freq} Hz ({max_freq/1e6:.1f} MHz))")
    
     except Exception as e:
         print(f"  ⚠️  GPU: 恢复失败: {e}")
 
 
-def restore_all_frequencies(original_settings):
-    """恢复所有频率设置"""
-    if not original_settings:
-        return
+def restore_all_frequencies(original_settings=None):
+    """
+    恢复所有频率设置（通过读取available_frequencies设置最小值和最大值）
     
-    restore_all_cpu_frequency(original_settings.get('cpu_freqs', {}))
+    Args:
+        original_settings: 保留参数以兼容旧代码，但不再使用（现在直接从设备读取可用频率）
+    """
+    restore_all_cpu_frequency(None)
     
     # 恢复GPU频率
-    gpu_settings = original_settings.get('gpu_freq')
-    if gpu_settings:
-        print("\n🔧 恢复GPU频率设置...")
-        restore_gpu_frequency(gpu_settings)
+    print("\n🔧 恢复GPU频率设置...")
+    restore_gpu_frequency(None)
     
     print("✅ 频率设置已恢复")
 
