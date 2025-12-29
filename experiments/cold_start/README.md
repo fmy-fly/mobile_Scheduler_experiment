@@ -26,10 +26,8 @@
 python experiments/cold_start/run_complete.py <package_name> [选项]
 
 # 示例
-python experiments/cold_start/run_complete.py com.example.app
+python experiments/cold_start/run_complete.py com.ss.android.ugc.aweme
 
-# 指定Activity
-python experiments/cold_start/run_complete.py com.example.app --activity com.example.app.MainActivity
 
 # 指定实验名称和输出目录
 python experiments/cold_start/run_complete.py com.example.app \
@@ -69,6 +67,26 @@ python experiments/cold_start/plot_results.py <results_dir> --output analysis.pn
 - `--config`: Perfetto配置文件路径(默认: /data/misc/perfetto-configs/HardwareInfo.pbtx)
 - `--output-dir`: 输出目录(默认: Perfetto/trace/traceAnalysis/results/{experiment_name})
 - `--no-show`: 不显示图表，只保存
+- `--max-frequency`: 设置CPU/GPU到最大频率（默认使用系统调度）
+
+### 实验模式说明
+
+实验支持两种频率模式：
+
+1. **默认调度模式**（默认）：使用系统默认的CPU/GPU频率调度策略
+   ```bash
+   python experiments/cold_start/run_complete.py com.example.app
+   ```
+
+2. **最大频率模式**：将所有CPU核心和GPU频率设置到最大值
+   ```bash
+   python experiments/cold_start/run_complete.py com.example.app --max-frequency
+   ```
+
+**注意**：使用`--max-frequency`模式需要：
+- 设备已root
+- 具有修改CPU/GPU频率的权限
+- 实验完成后会自动恢复频率设置
 
 ## 输出说明
 
@@ -112,6 +130,8 @@ adb push "Perfetto/configPerfetto/HardwareInfo.pbtx" /data/misc/perfetto-configs
 
 Perfetto需要系统级权限才能追踪CPU、GPU频率和功耗数据。
 
+**注意**：如果使用`--max-frequency`模式，必须确保设备已root，因为需要修改CPU/GPU频率设置。
+
 ## 依赖安装
 
 ```bash
@@ -131,12 +151,40 @@ pip install perfetto pandas matplotlib numpy
 完整示例：
 
 ```bash
-# 1. 运行完整实验
+# 1. 运行完整实验（默认调度模式）
 python experiments/cold_start/run_complete.py com.example.myapp \
     --activity com.example.myapp.MainActivity \
     --experiment-name TestRun1 \
     --duration 30
 
-# 2. 查看结果
+# 2. 运行完整实验（最大频率模式）
+python experiments/cold_start/run_complete.py com.example.myapp \
+    --activity com.example.myapp.MainActivity \
+    --experiment-name TestRun1MaxFreq \
+    --duration 30 \
+    --max-frequency
+
+# 3. 查看结果
 # 结果保存在: Perfetto/trace/traceAnalysis/results/TestRun1/
 ```
+
+## 实验对比
+
+可以通过运行两种模式来对比不同频率策略对冷启动性能的影响：
+
+```bash
+# 默认调度模式
+python experiments/cold_start/run_complete.py com.example.app \
+    --experiment-name DefaultScheduler
+
+# 最大频率模式
+python experiments/cold_start/run_complete.py com.example.app \
+    --experiment-name MaxFrequency \
+    --max-frequency
+```
+
+然后对比两种模式下的：
+- 冷启动时长
+- CPU频率变化曲线
+- GPU频率变化曲线
+- 功耗变化

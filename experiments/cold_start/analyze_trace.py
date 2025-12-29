@@ -185,7 +185,8 @@ class ColdStartAnalyzer:
             result = self.tp.query(query)
             data = []
             for row in result:
-                freq = row.frequency_mhz / 1000000.0 if row.frequency_mhz > 1000 else row.frequency_mhz
+                # 直接使用原始数据，不进行除法转换
+                freq = row.frequency_mhz
                 data.append({
                     'timestamp_ns': row.ts,
                     'frequency_mhz': freq
@@ -206,7 +207,8 @@ class ColdStartAnalyzer:
                 """
                 result2 = self.tp.query(query2)
                 for row in result2:
-                    freq = row.frequency_mhz / 1000000.0 if row.frequency_mhz > 1000 else row.frequency_mhz
+                    # 直接使用原始数据，不进行除法转换
+                    freq = row.frequency_mhz
                     data.append({
                         'timestamp_ns': row.ts,
                         'frequency_mhz': freq
@@ -307,9 +309,9 @@ class ColdStartAnalyzer:
         print(f"⏱️  冷启动时长: {cold_start_duration_ms:.2f} ms ({cold_start_duration_ms / 1000:.3f} 秒)")
         cold_start_duration_ns = cold_start_duration_ms * 1e6
         
-        # 4. 获取CPU频率数据（扩展查询范围：前后各20%的启动时长）
+        # 4. 获取CPU频率数据（扩展查询范围：前后各30%的启动时长）
         print("\n📈 提取CPU频率数据...")
-        duration_extend_ns = cold_start_duration_ns * 0.2  # 20%的启动时长
+        duration_extend_ns = cold_start_duration_ns * 0.3  # 30%的启动时长
         cpu_query_start = app_start_ns_orig - duration_extend_ns
         cpu_query_end = app_drawn_ns_orig + duration_extend_ns
         cpu_freq_df = self.get_cpu_frequency_data(cpu_query_start, cpu_query_end)
@@ -320,7 +322,7 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到CPU频率数据")
         
-        # 5. 获取GPU频率数据（扩展查询范围：前后各20%的启动时长）
+        # 5. 获取GPU频率数据（扩展查询范围：前后各30%的启动时长）
         print("📈 提取GPU频率数据...")
         gpu_query_start = app_start_ns_orig - duration_extend_ns
         gpu_query_end = app_drawn_ns_orig + duration_extend_ns
@@ -332,7 +334,7 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到GPU频率数据")
         
-        # 6. 获取功耗数据（扩展查询范围：前后各20%的启动时长）
+        # 6. 获取功耗数据（扩展查询范围：前后各30%的启动时长）
         print("📈 提取功耗数据...")
         power_query_start = app_start_ns_orig - duration_extend_ns
         power_query_end = app_drawn_ns_orig + duration_extend_ns

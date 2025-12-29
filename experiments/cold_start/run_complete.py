@@ -21,7 +21,8 @@ def run_complete_experiment(package_name, activity_name=None,
                            trace_duration=30,
                            config_file="/data/misc/perfetto-configs/HardwareInfo.pbtx",
                            output_dir=None,
-                           show_plots=True):
+                           show_plots=True,
+                           max_frequency=False):
     """
     运行完整的冷启动实验流程
     
@@ -33,6 +34,7 @@ def run_complete_experiment(package_name, activity_name=None,
         config_file: perfetto配置文件路径
         output_dir: 输出目录
         show_plots: 是否显示图表
+        max_frequency: 是否设置CPU/GPU到最大频率（默认False，使用系统默认调度）
     
     Returns:
         包含所有结果的字典
@@ -48,7 +50,8 @@ def run_complete_experiment(package_name, activity_name=None,
         activity_name=activity_name,
         experiment_name=experiment_name,
         trace_duration=trace_duration,
-        config_file=config_file
+        config_file=config_file,
+        max_frequency=max_frequency
     )
     
     if not trace_file or not os.path.exists(trace_file):
@@ -112,6 +115,8 @@ if __name__ == "__main__":
                        help='Perfetto配置文件路径')
     parser.add_argument('--output-dir', help='输出目录')
     parser.add_argument('--no-show', action='store_true', help='不显示图表')
+    parser.add_argument('--max-frequency', action='store_true',
+                       help='设置CPU/GPU到最大频率（默认使用系统调度）')
     
     args = parser.parse_args()
     
@@ -122,5 +127,6 @@ if __name__ == "__main__":
         trace_duration=args.duration,
         config_file=args.config,
         output_dir=args.output_dir,
-        show_plots=not args.no_show
+        show_plots=not args.no_show,
+        max_frequency=args.max_frequency
     )
