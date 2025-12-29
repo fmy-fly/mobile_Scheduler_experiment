@@ -116,17 +116,17 @@ def run_cold_start_experiment(package_name, activity_name=None,
         
         # 6. 拉取trace文件
         print("\n[6/6] 拉取Trace文件...")
-        get_perfetto(experiment_name)
+        trace_filename = get_perfetto(experiment_name)  # 获取实际生成的文件名（带时间戳）
         
         print("\n" + "=" * 60)
         print("✅ 实验完成!")
         print("=" * 60)
     
-        # 返回trace文件路径
+        # 返回trace文件路径（使用实际生成的文件名）
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(script_dir))  # experiments/cold_start -> experiments -> 项目根目录
         trace_path = os.path.join(project_root, "Perfetto", "trace", "traceRecord", 
-                                 f"method{experiment_name}", f"{experiment_name}.perfetto-trace")
+                                 f"method{experiment_name}", trace_filename)
         return trace_path if os.path.exists(trace_path) else None
     finally:
         # 恢复频率设置（如果需要）

@@ -83,26 +83,26 @@ def plot_cpu_frequency(results, output_path=None):
         cpu_data = cpu_df[cpu_df['cpu'] == cpu].sort_values('time_relative_s')
         
         if len(cpu_data) > 0:
-            ax.plot(cpu_data['time_relative_s'], cpu_data['frequency_mhz'], 
+            ax.plot(cpu_data['time_relative_s'], cpu_data['frequency'], 
                    linewidth=1.5, color=colors[idx], label=f'CPU {int(cpu)}')
             
             # 标记启动区间
             start_window_start = results.get('start_window_start_s', 0)
             start_window_end = results.get('start_window_end_s', 0)
             if start_window_end > 0:
-                y_min = cpu_data['frequency_mhz'].min()
-                y_max = cpu_data['frequency_mhz'].max()
+                y_min = cpu_data['frequency'].min()
+                y_max = cpu_data['frequency'].max()
                 y_range = y_max - y_min if y_max > y_min else y_max
                 # 添加半透明背景标记启动区间
                 ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
             
-            # 设置Y轴范围：使用CPU支持的频率范围（available_frequencies是KHz，需要转换为MHz）
+            # 设置Y轴范围：使用CPU支持的频率范围（直接使用原始值）
             cpu_available_freqs = results.get('cpu_available_frequencies', {})
             cpu_id_int = int(cpu)
             if cpu_id_int in cpu_available_freqs:
-                # 使用可用频率的最小值和最大值（从KHz转换为MHz）
-                y_min = cpu_available_freqs[cpu_id_int]['min'] / 1000.0  # KHz转MHz
-                y_max = cpu_available_freqs[cpu_id_int]['max'] / 1000.0  # KHz转MHz
+                # 使用可用频率的最小值和最大值（直接使用原始值，不转换）
+                y_min = cpu_available_freqs[cpu_id_int]['min']
+                y_max = cpu_available_freqs[cpu_id_int]['max']
                 y_range = y_max - y_min
                 if y_range > 0:
                     # 添加5%的边距以便查看
@@ -112,8 +112,8 @@ def plot_cpu_frequency(results, output_path=None):
                     ax.set_ylim(y_min * 0.95, y_max * 1.05)
             else:
                 # 如果没有可用频率信息，使用实际数据的频率范围
-                y_min = cpu_data['frequency_mhz'].min()
-                y_max = cpu_data['frequency_mhz'].max()
+                y_min = cpu_data['frequency'].min()
+                y_max = cpu_data['frequency'].max()
                 y_range = y_max - y_min
                 if y_range > 0:
                     y_padding = y_range * 0.1
@@ -126,7 +126,7 @@ def plot_cpu_frequency(results, output_path=None):
             # 如果没有数据，设置默认范围
             ax.set_ylim(0, 3000)
         
-        ax.set_ylabel(f'CPU {int(cpu)}\n频率 (MHz)', fontsize=10, fontweight='bold')
+        ax.set_ylabel(f'CPU {int(cpu)}\n频率', fontsize=10, fontweight='bold')
         ax.grid(True, alpha=0.3, linestyle='--')
         # 只在第一个CPU的子图显示完整的图例（包含启动区间）
         if idx == 0:
@@ -177,7 +177,7 @@ def plot_gpu_frequency(results, output_path=None):
     
     if 'gpu_frequency' in results and not results['gpu_frequency'].empty:
         gpu_df = results['gpu_frequency'].sort_values('time_relative_s')
-        ax.plot(gpu_df['time_relative_s'], gpu_df['frequency_mhz'], 
+        ax.plot(gpu_df['time_relative_s'], gpu_df['frequency'], 
                linewidth=2, color='red', label='GPU频率')
         
         # 标记启动区间
@@ -186,12 +186,12 @@ def plot_gpu_frequency(results, output_path=None):
             # 添加半透明背景标记启动区间
             ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
         
-        # 设置Y轴范围：使用GPU支持的频率范围（available_frequencies是Hz，需要转换为MHz）
+        # 设置Y轴范围：使用GPU支持的频率范围（直接使用原始值）
         gpu_available_freqs = results.get('gpu_available_frequencies')
         if gpu_available_freqs:
-            # 使用可用频率的最小值和最大值（从Hz转换为MHz）
-            y_min = gpu_available_freqs['min'] / 1e6  # Hz转MHz
-            y_max = gpu_available_freqs['max'] / 1e6  # Hz转MHz
+            # 使用可用频率的最小值和最大值（直接使用原始值，不转换）
+            y_min = gpu_available_freqs['min']
+            y_max = gpu_available_freqs['max']
             y_range = y_max - y_min
             if y_range > 0:
                 # 添加5%的边距以便查看
@@ -201,8 +201,8 @@ def plot_gpu_frequency(results, output_path=None):
                 ax.set_ylim(y_min * 0.95, y_max * 1.05)
         else:
             # 如果没有可用频率信息，使用实际数据的频率范围
-            y_min = gpu_df['frequency_mhz'].min()
-            y_max = gpu_df['frequency_mhz'].max()
+            y_min = gpu_df['frequency'].min()
+            y_max = gpu_df['frequency'].max()
             y_range = y_max - y_min
             if y_range > 0:
                 y_padding = y_range * 0.1
@@ -213,7 +213,7 @@ def plot_gpu_frequency(results, output_path=None):
                 ax.set_ylim(0, max(100, y_max * 1.1) if y_max > 0 else 100)
         
         ax.set_xlabel('时间 (秒)', fontsize=12)
-        ax.set_ylabel('频率 (MHz)', fontsize=12)
+        ax.set_ylabel('频率', fontsize=12)
         ax.set_title('GPU频率变化', fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=11)
@@ -453,21 +453,21 @@ def plot_summary_statistics(results, output_path=None, show_plot=True):
     ax2 = axes[0, 1]
     if 'cpu_frequency' in results and not results['cpu_frequency'].empty:
         cpu_df = results['cpu_frequency']
-        avg_freq = cpu_df['frequency_mhz'].mean()
-        max_freq = cpu_df['frequency_mhz'].max()
-        min_freq = cpu_df['frequency_mhz'].min()
+        avg_freq = cpu_df['frequency'].mean()
+        max_freq = cpu_df['frequency'].max()
+        min_freq = cpu_df['frequency'].min()
         stats = ['平均频率', '最大频率', '最小频率']
         values = [avg_freq, max_freq, min_freq]
         colors = ['skyblue', 'orange', 'lightgreen']
         bars = ax2.bar(stats, values, color=colors, alpha=0.7)
-        ax2.set_ylabel('频率 (MHz)', fontsize=11)
+        ax2.set_ylabel('频率', fontsize=11)
         ax2.set_title('CPU频率统计', fontsize=12, fontweight='bold')
         ax2.grid(True, alpha=0.3, axis='y')
         # 添加数值标签
         for bar, val in zip(bars, values):
             height = bar.get_height()
             ax2.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{val:.0f} MHz', ha='center', va='bottom', fontsize=9)
+                    f'{val:.0f}', ha='center', va='bottom', fontsize=9)
     else:
         ax2.text(0.5, 0.5, '无数据', ha='center', va='center', 
                 transform=ax2.transAxes, fontsize=12)
@@ -477,21 +477,21 @@ def plot_summary_statistics(results, output_path=None, show_plot=True):
     ax3 = axes[1, 0]
     if 'gpu_frequency' in results and not results['gpu_frequency'].empty:
         gpu_df = results['gpu_frequency']
-        avg_freq = gpu_df['frequency_mhz'].mean()
-        max_freq = gpu_df['frequency_mhz'].max()
-        min_freq = gpu_df['frequency_mhz'].min()
+        avg_freq = gpu_df['frequency'].mean()
+        max_freq = gpu_df['frequency'].max()
+        min_freq = gpu_df['frequency'].min()
         stats = ['平均频率', '最大频率', '最小频率']
         values = [avg_freq, max_freq, min_freq]
         colors = ['salmon', 'coral', 'mistyrose']
         bars = ax3.bar(stats, values, color=colors, alpha=0.7)
-        ax3.set_ylabel('频率 (MHz)', fontsize=11)
+        ax3.set_ylabel('频率', fontsize=11)
         ax3.set_title('GPU频率统计', fontsize=12, fontweight='bold')
         ax3.grid(True, alpha=0.3, axis='y')
         # 添加数值标签
         for bar, val in zip(bars, values):
             height = bar.get_height()
             ax3.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{val:.0f} MHz', ha='center', va='bottom', fontsize=9)
+                    f'{val:.0f}', ha='center', va='bottom', fontsize=9)
     else:
         ax3.text(0.5, 0.5, '无数据', ha='center', va='center', 
                 transform=ax3.transAxes, fontsize=12)

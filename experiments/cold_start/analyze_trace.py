@@ -143,24 +143,23 @@ class ColdStartAnalyzer:
             query = f"""
             SELECT 
                 c.ts,
-                c.value as frequency_khz,
+                c.value as frequency,
                 cct.cpu
             FROM counter c
             JOIN cpu_counter_track cct ON c.track_id = cct.id
             JOIN track t ON c.track_id = t.id
-            WHERE (t.name LIKE '%cpu_freq%' OR t.name LIKE '%cpufreq%')
+            WHERE t.name = 'cpu_freq'
             AND c.ts >= {start_time_ns}
             AND c.ts <= {end_time_ns}
             ORDER BY c.ts ASC, cct.cpu ASC
             """
             result = self.tp.query(query)
             for row in result:
-                freq_khz = row.frequency_khz if row.frequency_khz else 0
-                freq_mhz = freq_khz / 1000.0 if freq_khz > 1000 else freq_khz
+                freq = row.frequency if row.frequency else 0
                 cpu_id = getattr(row, 'cpu', 0)
                 data.append({
                     'timestamp_ns': row.ts,
-                    'frequency_mhz': freq_mhz,
+                    'frequency': freq,
                     'cpu': cpu_id
                 })
         except Exception as e:
@@ -171,53 +170,43 @@ class ColdStartAnalyzer:
     def get_gpu_frequency_data(self, start_time_ns, end_time_ns):
         """从trace中查询GPU频率数据"""
         try:
-            # 方法1: 从counter表查询
-            query = f"""
-            SELECT 
-                ts,
-                value as frequency_mhz
-            FROM counter c
-            JOIN track t ON c.track_id = t.id
-            WHERE (t.name LIKE '%gpu%frequency%' OR t.name LIKE '%gpu_freq%')
-            AND ts >= {start_time_ns - start_time_ns % 1000000}
-            AND ts <= {end_time_ns + 1000000 - end_time_ns % 1000000}
-            ORDER BY ts ASC
-            """
-            result = self.tp.query(query)
-            data = []
-            for row in result:
-                # 直接使用原始数据，不进行除法转换
-                freq = row.frequency_mhz
-                data.append({
-                    'timestamp_ns': row.ts,
-                    'frequency_mhz': freq
-                })
+            # 优先选择最准确的track（gpufreq是最常见的GPU频率track）
+            preferred_tracks = ['gpufreq']
+            # , 'gpu_frequency', 'gpu_freq', 'GPU Frequency'
+            for preferred in preferred_tracks:
+                try:
+                    query = f"""
+                    SELECT 
+                        c.ts,
+                        c.value as frequency
+                    FROM counter c
+                    JOIN track t ON c.track_id = t.id
+                    WHERE t.name = '{preferred}'
+                    AND c.ts >= {start_time_ns}
+                    AND c.ts <= {end_time_ns}
+                    ORDER BY c.ts ASC
+                    """
+                    result = self.tp.query(query)
+                    data = []
+                    for row in result:
+                        freq = row.frequency if row.frequency else 0
+                        data.append({
+                            'timestamp_ns': row.ts,
+                            'frequency': freq
+                        })
+                    if len(data) > 0:
+                        print(f"   ✅ 使用track: {preferred}, {len(data)}条")
+                        return pd.DataFrame(data)
+                except Exception as e:
+                    continue
             
-            if len(data) == 0:
-                # 方法2: 从ftrace事件查询
-                query2 = f"""
-                SELECT 
-                    ts,
-                    CAST(value AS REAL) as frequency_mhz
-                FROM counter c
-                JOIN track t ON c.track_id = t.id
-                WHERE t.name LIKE '%gpu_freq%'
-                AND ts >= {start_time_ns}
-                AND ts <= {end_time_ns}
-                ORDER BY ts ASC
-                """
-                result2 = self.tp.query(query2)
-                for row in result2:
-                    # 直接使用原始数据，不进行除法转换
-                    freq = row.frequency_mhz
-                    data.append({
-                        'timestamp_ns': row.ts,
-                        'frequency_mhz': freq
-                    })
+            print("   ⚠️  未找到GPU频率数据")
+            return pd.DataFrame()
             
-            return pd.DataFrame(data)
         except Exception as e:
             print(f"⚠️  获取GPU频率数据时出错: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
     
     def get_power_data(self, start_time_ns, end_time_ns):
@@ -347,22 +336,22 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到功耗数据")
         
-        # 获取CPU和GPU的可用频率范围（保持原始单位：CPU用KHz，GPU用Hz）
-        cpu_available_freqs = {}  # {cpu_id: {'min': min_freq_khz, 'max': max_freq_khz}}
+        # 获取CPU和GPU的可用频率范围（保持原始单位，不进行转换）
+        cpu_available_freqs = {}  # {cpu_id: {'min': min_freq, 'max': max_freq}}
         if not cpu_freq_df.empty and 'cpu' in cpu_freq_df.columns:
             for cpu_id in cpu_freq_df['cpu'].unique():
                 freqs = get_available_cpu_frequencies(int(cpu_id))
                 if freqs:
-                    # 保持KHz单位，不转换
+                    # 保持原始单位，不转换
                     cpu_available_freqs[int(cpu_id)] = {
                         'min': min(freqs),
                         'max': max(freqs)
                     }
         
-        gpu_available_freqs = None  # {'min': min_freq_hz, 'max': max_freq_hz}，GPU频率用Hz
+        gpu_available_freqs = None  # {'min': min_freq, 'max': max_freq}
         gpu_freqs = get_available_gpu_frequencies()
         if gpu_freqs:
-            # 保持Hz单位，不转换
+            # 保持原始单位，不转换
             gpu_available_freqs = {
                 'min': min(gpu_freqs),
                 'max': max(gpu_freqs)
