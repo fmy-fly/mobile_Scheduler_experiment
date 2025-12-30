@@ -136,36 +136,63 @@ class ColdStartAnalyzer:
     
     def get_cpu_frequency_data(self, start_time_ns, end_time_ns):
         """从trace中查询CPU频率数据"""
-        data = []
-        
-        # 通过cpu_counter_track查询，可以获取正确的CPU编号
         try:
-            query = f"""
-            SELECT 
-                c.ts,
-                c.value as frequency,
-                cct.cpu
-            FROM counter c
-            JOIN cpu_counter_track cct ON c.track_id = cct.id
-            JOIN track t ON c.track_id = t.id
-            WHERE t.name = 'cpu_freq'
-            AND c.ts >= {start_time_ns}
-            AND c.ts <= {end_time_ns}
-            ORDER BY c.ts ASC, cct.cpu ASC
-            """
-            result = self.tp.query(query)
-            for row in result:
-                freq = row.frequency if row.frequency else 0
-                cpu_id = getattr(row, 'cpu', 0)
-                data.append({
-                    'timestamp_ns': row.ts,
-                    'frequency': freq,
-                    'cpu': cpu_id
-                })
+            # 先列出所有CPU频率相关的track，用于调试
+            try:
+                debug_query = """
+                SELECT DISTINCT t.name as track_name
+                FROM track t
+                WHERE (t.name LIKE '%cpu%freq%' OR t.name LIKE '%cpufreq%' OR t.name LIKE '%cpu_freq%')
+                ORDER BY t.name
+                """
+                debug_result = self.tp.query(debug_query)
+                cpu_tracks = [row.track_name for row in debug_result]
+                if cpu_tracks:
+                    print(f"   🔍 找到CPU频率相关track: {', '.join(cpu_tracks[:15])}")
+            except:
+                pass
+            
+            # 尝试通过cpu_counter_track查询（标准方法）
+            preferred_track_names = ['cpu_freq', 'cpufreq']
+            for track_name in preferred_track_names:
+                try:
+                    query = f"""
+                    SELECT 
+                        c.ts,
+                        c.value as frequency,
+                        cct.cpu
+                    FROM counter c
+                    JOIN cpu_counter_track cct ON c.track_id = cct.id
+                    JOIN track t ON c.track_id = t.id
+                    WHERE t.name = '{track_name}'
+                    AND c.ts >= {start_time_ns}
+                    AND c.ts <= {end_time_ns}
+                    ORDER BY c.ts ASC, cct.cpu ASC
+                    """
+                    result = self.tp.query(query)
+                    data = []
+                    for row in result:
+                        freq = row.frequency if row.frequency else 0
+                        cpu_id = getattr(row, 'cpu', 0)
+                        data.append({
+                            'timestamp_ns': row.ts,
+                            'frequency': freq,
+                            'cpu': cpu_id
+                        })
+                    if len(data) > 0:
+                        print(f"   ✅ 使用track: {track_name}, {len(data)}条CPU频率数据")
+                        return pd.DataFrame(data)
+                except Exception as e:
+                    continue
+            
+            print("   ⚠️  未找到CPU频率数据")
+            return pd.DataFrame()
+            
         except Exception as e:
-            print(f"⚠️  查询CPU频率数据失败: {e}")
-    
-        return pd.DataFrame(data)
+            print(f"⚠️  获取CPU频率数据时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return pd.DataFrame()
     
     def get_gpu_frequency_data(self, start_time_ns, end_time_ns):
         """从trace中查询GPU频率数据"""
@@ -265,6 +292,103 @@ class ColdStartAnalyzer:
             print(f"⚠️  获取功耗数据时出错: {e}")
             return pd.DataFrame()
     
+    def get_cpu_scheduling_data(self, package_name, start_time_ns, end_time_ns):
+        """从trace中查询应用进程在哪个CPU上运行的数据"""
+        data = []
+        try:
+            # 首先找到应用的进程
+            process_query = f"""
+            SELECT DISTINCT pid, name
+            FROM process
+            WHERE name LIKE '%{package_name}%'
+            ORDER BY pid
+            """
+            process_result = self.tp.query(process_query)
+            process_pids = []
+            for row in process_result:
+                process_pids.append(row.pid)
+                print(f"   🔍 找到进程: {row.name} (PID: {row.pid})")
+            
+            if not process_pids:
+                print(f"   ⚠️  未找到包名包含 '{package_name}' 的进程")
+                # 尝试通过线程名称查找
+                thread_query = f"""
+                SELECT DISTINCT t.tid, t.name
+                FROM thread t
+                WHERE t.name LIKE '%{package_name}%'
+                ORDER BY t.tid
+                LIMIT 20
+                """
+                thread_result = self.tp.query(thread_query)
+                thread_tids = []
+                for row in thread_result:
+                    thread_tids.append(row.tid)
+                    print(f"   🔍 找到线程: {row.name} (TID: {row.tid})")
+                
+                if not thread_tids:
+                    print("   ⚠️  未找到相关进程或线程")
+                    return pd.DataFrame()
+                
+                # 使用线程ID查询调度信息
+                query = f"""
+                SELECT 
+                    s.ts,
+                    s.dur,
+                    s.cpu,
+                    s.utid,
+                    t.name as thread_name,
+                    t.tid
+                FROM sched s
+                JOIN thread t ON s.utid = t.utid
+                WHERE t.tid IN ({','.join(map(str, thread_tids))})
+                AND s.ts >= {start_time_ns}
+                AND s.ts <= {end_time_ns}
+                ORDER BY s.ts ASC, s.cpu ASC
+                """
+            else:
+                # 使用进程ID查询该进程的所有线程
+                query = f"""
+                SELECT 
+                    s.ts,
+                    s.dur,
+                    s.cpu,
+                    s.utid,
+                    t.name as thread_name,
+                    t.tid
+                FROM sched s
+                JOIN thread t ON s.utid = t.utid
+                JOIN process p ON t.upid = p.upid
+                WHERE p.pid IN ({','.join(map(str, process_pids))})
+                AND s.ts >= {start_time_ns}
+                AND s.ts <= {end_time_ns}
+                ORDER BY s.ts ASC, s.cpu ASC
+                """
+            
+            result = self.tp.query(query)
+            for row in result:
+                duration_ns = getattr(row, 'dur', 0) if hasattr(row, 'dur') else 0
+                data.append({
+                    'timestamp_ns': row.ts,
+                    'duration_ns': duration_ns,
+                    'cpu': row.cpu,
+                    'utid': row.utid,
+                    'thread_name': getattr(row, 'thread_name', 'unknown'),
+                    'tid': getattr(row, 'tid', 0)
+                })
+            
+            if len(data) > 0:
+                print(f"   ✅ 获取到 {len(data)} 条CPU调度数据")
+                return pd.DataFrame(data)
+            else:
+                print("   ⚠️  未获取到CPU调度数据")
+                return pd.DataFrame()
+            
+        except Exception as e:
+            print(f"⚠️  获取CPU调度数据时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return pd.DataFrame()
+    
     def analyze(self, package_name):
         """
         执行完整分析
@@ -336,6 +460,18 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到功耗数据")
         
+        # 7. 获取CPU调度数据（扩展查询范围：前后各30%的启动时长）
+        print("📈 提取CPU调度数据...")
+        cpu_sched_query_start = app_start_ns_orig - duration_extend_ns
+        cpu_sched_query_end = app_drawn_ns_orig + duration_extend_ns
+        cpu_sched_df = self.get_cpu_scheduling_data(package_name, cpu_sched_query_start, cpu_sched_query_end)
+        if not cpu_sched_df.empty:
+            # 使用app_start_ns_orig作为基准，这样启动区间从0开始
+            cpu_sched_df['time_relative_s'] = (cpu_sched_df['timestamp_ns'] - app_start_ns_orig) / 1e9
+            print(f"✅ 获取到 {len(cpu_sched_df)} 条CPU调度数据 (查询范围: {duration_extend_ns/1e9:.3f}s前 ~ {duration_extend_ns/1e9:.3f}s后)")
+        else:
+            print("⚠️  未获取到CPU调度数据")
+        
         # 获取CPU和GPU的可用频率范围（保持原始单位，不进行转换）
         cpu_available_freqs = {}  # {cpu_id: {'min': min_freq, 'max': max_freq}}
         if not cpu_freq_df.empty and 'cpu' in cpu_freq_df.columns:
@@ -366,6 +502,7 @@ class ColdStartAnalyzer:
             'cpu_frequency': cpu_freq_df,
             'gpu_frequency': gpu_freq_df,
             'power': power_df,
+            'cpu_scheduling': cpu_sched_df,
             'start_window_start_s': -duration_extend_ns / 1e9,  # 启动区间开始（相对时间）
             'start_window_end_s': cold_start_duration_ns / 1e9,  # 启动区间结束（相对时间，即启动时长）
             'cpu_available_frequencies': cpu_available_freqs,  # CPU可用频率范围
@@ -411,6 +548,11 @@ def analyze_cold_start_trace(trace_path, package_name, output_dir=None):
                 if not results['power'].empty:
                     results['power'].to_csv(
                         os.path.join(output_dir, 'power.csv'), 
+                        index=False
+                    )
+                if not results['cpu_scheduling'].empty:
+                    results['cpu_scheduling'].to_csv(
+                        os.path.join(output_dir, 'cpu_scheduling.csv'), 
                         index=False
                     )
             return results

@@ -36,13 +36,15 @@ def load_analysis_results(results_dir_or_dict):
     cpu_freq_file = os.path.join(results_dir, 'cpu_frequency.csv')
     gpu_freq_file = os.path.join(results_dir, 'gpu_frequency.csv')
     power_file = os.path.join(results_dir, 'power.csv')
-    
+    cpu_sched_file = os.path.join(results_dir, 'cpu_scheduling.csv')
     if os.path.exists(cpu_freq_file):
         results['cpu_frequency'] = pd.read_csv(cpu_freq_file)
     if os.path.exists(gpu_freq_file):
         results['gpu_frequency'] = pd.read_csv(gpu_freq_file)
     if os.path.exists(power_file):
         results['power'] = pd.read_csv(power_file)
+    if os.path.exists(cpu_sched_file):
+        results['cpu_scheduling'] = pd.read_csv(cpu_sched_file)
     
     return results
 
@@ -181,10 +183,29 @@ def plot_gpu_frequency(results, output_path=None):
                linewidth=2, color='red', label='GPU频率')
         
         # 标记启动区间
+        start_window_start = results.get('start_window_start_s', 0)
         start_window_end = results.get('start_window_end_s', 0)
         if start_window_end > 0:
             # 添加半透明背景标记启动区间
             ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
+        
+        # 设置X轴范围：显示所有数据，包括启动前的部分
+        x_min_data = gpu_df['time_relative_s'].min()
+        x_max_data = gpu_df['time_relative_s'].max()
+        
+        # 使用start_window_start_s作为X轴起始点（通常是负值，表示启动前的扩展范围）
+        # 如果数据的最小值更小，则使用数据的最小值
+        x_min = min(x_min_data, start_window_start) if start_window_start < 0 else x_min_data
+        x_max = max(x_max_data, start_window_end)
+        
+        x_range = x_max - x_min
+        if x_range > 0:
+            # 添加5%的边距
+            x_padding = x_range * 0.05
+            ax.set_xlim(x_min - x_padding, x_max + x_padding)
+        else:
+            # 如果数据范围很小，至少显示一个合理的范围
+            ax.set_xlim(x_min - 0.1, x_max + 0.1)
         
         # 设置Y轴范围：使用GPU支持的频率范围（直接使用原始值）
         gpu_available_freqs = results.get('gpu_available_frequencies')
@@ -383,6 +404,163 @@ def plot_power(results, output_path=None):
     plt.close()
 
 
+def plot_cpu_scheduling(results, output_path=None):
+    """
+    绘制应用进程在哪个CPU上运行的调度图（类似Perfetto的CPU调度视图）
+    每个CPU一行，显示应用进程在该CPU上运行的时间段
+    
+    Args:
+        results: 分析结果字典
+        output_path: 输出图片路径
+    """
+    if 'cpu_scheduling' not in results or results['cpu_scheduling'].empty:
+        print("⚠️  无CPU调度数据")
+        return
+    
+    cpu_sched_df = results['cpu_scheduling'].copy()
+    
+    # 获取所有CPU编号并排序
+    if 'cpu' in cpu_sched_df.columns:
+        cpu_list = sorted(cpu_sched_df['cpu'].unique())
+        cpu_list = cpu_list[:8]  # 最多8个CPU
+    else:
+        print("⚠️  CPU调度数据中没有cpu列")
+        return
+    
+    # 如果没有数据，返回
+    if len(cpu_list) == 0:
+        print("⚠️  未找到CPU调度数据")
+        return
+    
+    # 创建垂直堆叠的子图（每个CPU一行）
+    fig, axes = plt.subplots(len(cpu_list), 1, figsize=(14, 1.8 * len(cpu_list)), sharex=True)
+    
+    # 如果只有一个CPU，axes不是数组
+    if len(cpu_list) == 1:
+        axes = [axes]
+    
+    # 为每个CPU绘制调度信息
+    colors = plt.cm.tab20(np.linspace(0, 1, 20))  # 使用更多颜色以区分不同线程
+    
+    # 获取所有唯一的线程
+    if 'utid' in cpu_sched_df.columns:
+        unique_threads = sorted(cpu_sched_df['utid'].unique())
+    else:
+        unique_threads = [0]
+    
+    # 为每个线程分配颜色和Y位置
+    thread_info = {}
+    thread_count = len(unique_threads)
+    if thread_count > 0:
+        y_step = 0.8 / max(thread_count, 1)  # 在Y轴范围内均匀分布线程
+        for i, utid in enumerate(unique_threads):
+            thread_info[utid] = {
+                'color': colors[i % len(colors)],
+                'y_pos': -0.4 + i * y_step,
+                'y_height': y_step * 0.8  # 线程条的高度
+            }
+    
+    for idx, cpu in enumerate(cpu_list):
+        ax = axes[idx]
+        cpu_data = cpu_sched_df[cpu_sched_df['cpu'] == cpu].sort_values('time_relative_s')
+        
+        if len(cpu_data) > 0:
+            # 检查是否有duration_ns字段
+            has_duration = 'duration_ns' in cpu_data.columns and cpu_data['duration_ns'].notna().any()
+            
+            # 对每个线程，绘制该线程在该CPU上运行的时间段
+            for i, utid in enumerate(cpu_data['utid'].unique()):
+                thread_data = cpu_data[cpu_data['utid'] == utid].sort_values('time_relative_s')
+                thread_name = thread_data['thread_name'].iloc[0] if 'thread_name' in thread_data.columns and len(thread_data) > 0 else f'TID-{utid}'
+                thread_color = thread_info.get(utid, {}).get('color', 'blue')
+                y_pos = thread_info.get(utid, {}).get('y_pos', 0)
+                y_height = thread_info.get(utid, {}).get('y_height', 0.1)
+                
+                # 只在第一个CPU的子图中添加图例标签
+                label = thread_name if idx == 0 else ""
+                first_bar = True  # 标记是否为第一个时间段
+                
+                if has_duration:
+                    # 如果有持续时间信息，绘制水平条（类似Gantt图）
+                    for _, row in thread_data.iterrows():
+                        start_time = row['time_relative_s']
+                        duration_ns = row.get('duration_ns', 0)
+                        if pd.isna(duration_ns):
+                            duration_ns = 0
+                        duration_s = duration_ns / 1e9 if duration_ns > 0 else 0
+                        if duration_s > 0:
+                            # 绘制水平条，只在第一个时间段添加标签
+                            current_label = label if first_bar else ""
+                            ax.barh(y_pos, duration_s, left=start_time, 
+                                   height=y_height, color=thread_color, 
+                                   alpha=0.7, edgecolor='black', linewidth=0.5,
+                                   label=current_label)
+                            first_bar = False  # 后续时间段不再添加标签
+                else:
+                    # 如果没有持续时间信息，使用散点图
+                    ax.scatter(thread_data['time_relative_s'], 
+                              [y_pos] * len(thread_data),
+                              c=[thread_color], 
+                              s=15, 
+                              alpha=0.7,
+                              label=label)
+            
+            # 标记启动区间
+            start_window_end = results.get('start_window_end_s', 0)
+            if start_window_end > 0:
+                # 添加半透明背景标记启动区间
+                ax.axvspan(0, start_window_end, alpha=0.1, color='yellow', zorder=0)
+        
+        ax.set_ylabel(f'CPU {int(cpu)}', fontsize=10, fontweight='bold')
+        ax.set_ylim(-0.5, 0.5)  # 固定Y轴范围
+        ax.set_yticks([])  # 不显示Y轴刻度
+        ax.grid(True, alpha=0.3, linestyle='--', axis='x', zorder=1)
+        ax.spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        
+        # 只在第一个CPU的子图显示图例
+        if idx == 0:
+            # 简化图例：只显示前15个线程，避免图例过于拥挤
+            handles, labels = ax.get_legend_handles_labels()
+            # 去重图例
+            seen_labels = set()
+            unique_handles = []
+            unique_labels = []
+            for h, l in zip(handles, labels):
+                if l not in seen_labels and l:  # 只添加非空标签
+                    seen_labels.add(l)
+                    unique_handles.append(h)
+                    unique_labels.append(l)
+            
+            if len(unique_handles) > 15:
+                ax.legend(unique_handles[:15], unique_labels[:15], 
+                         loc='upper right', fontsize=7, ncol=2, 
+                         framealpha=0.9)
+            elif len(unique_handles) > 0:
+                ax.legend(unique_handles, unique_labels, 
+                         loc='upper right', fontsize=7, ncol=2,
+                         framealpha=0.9)
+    
+    # 只在最下面的子图显示X轴标签
+    axes[-1].set_xlabel('时间 (秒)', fontsize=12, fontweight='bold')
+    
+    # 添加总标题
+    duration_ms = results.get('cold_start_duration_ms', 0)
+    duration_s = results.get('cold_start_duration_s', 0)
+    fig.suptitle(f'CPU调度时间线 - 启动时长: {duration_ms:.2f} ms ({duration_s:.3f} 秒)', 
+                fontsize=14, fontweight='bold', y=0.995)
+    
+    # 调整布局
+    plt.subplots_adjust(left=0.1, right=0.95, top=0.97, bottom=0.05, hspace=0.3)
+    
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"✅ CPU调度图表已保存到: {output_path}")
+    
+    plt.close()
+
+
 def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     """
     绘制冷启动分析图表（生成多张独立图片）
@@ -406,6 +584,7 @@ def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     gpu_path = os.path.join(base_dir, f'{base_name}_gpu_frequency.png')
     voltage_current_path = os.path.join(base_dir, f'{base_name}_voltage_current.png')
     power_path = os.path.join(base_dir, f'{base_name}_power.png')
+    cpu_sched_path = os.path.join(base_dir, f'{base_name}_cpu_scheduling.png')
     
     # 1. CPU频率图（8个CPU垂直堆叠）
     plot_cpu_frequency(results, cpu_path)
@@ -419,12 +598,16 @@ def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     # 4. 功耗图
     plot_power(results, power_path)
     
+    # 5. CPU调度图（显示app在哪个CPU上运行）
+    plot_cpu_scheduling(results, cpu_sched_path)
+    
     print(f"\n✅ 所有图表已生成完成！")
     print(f"   - CPU频率: {cpu_path}")
     print(f"   - GPU频率: {gpu_path}")
     print(f"   - 电压: {voltage_current_path.replace('.png', '_voltage.png')}")
     print(f"   - 电流: {voltage_current_path.replace('.png', '_current.png')}")
     print(f"   - 功耗: {power_path}")
+    print(f"   - CPU调度: {cpu_sched_path}")
 
 
 def plot_summary_statistics(results, output_path=None, show_plot=True):
