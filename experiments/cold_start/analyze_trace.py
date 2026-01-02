@@ -389,6 +389,63 @@ class ColdStartAnalyzer:
             traceback.print_exc()
             return pd.DataFrame()
     
+    def get_cpu_utilization_data(self, package_name, start_time_ns, end_time_ns):
+        """
+        从trace中查询CPU利用率数据
+        每100毫秒时间窗口内每个CPU的利用率
+        查询整个系统在该时间段的CPU利用率（不限制特定进程）
+        
+        Args:
+            package_name: 应用包名（保留参数以兼容，但实际查询所有进程）
+            start_time_ns: 开始时间（纳秒）
+            end_time_ns: 结束时间（纳秒）
+        
+        Returns:
+            DataFrame: 包含 time_100ms, cpu, cpu_util 列
+        """
+        data = []
+        try:
+            query = f"""
+            SELECT
+              -- 1. 时间分桶：10^8 纳秒 = 100毫秒
+              CAST(ts / 1e8 AS INT) AS time_100ms,
+              
+              cpu,
+
+              -- 2. 计算利用率：分母改成 1e8 (100ms)
+              -- 查询所有进程在该时间段的CPU利用率，不限制特定应用
+              SUM(dur) * 1.0 / 1e8 AS cpu_util
+
+            FROM sched s
+            WHERE
+              s.utid != 0
+              AND s.ts >= {start_time_ns}
+              AND s.ts <= {end_time_ns}
+            GROUP BY time_100ms, cpu
+            ORDER BY time_100ms, cpu
+            """
+            
+            result = self.tp.query(query)
+            for row in result:
+                data.append({
+                    'time_100ms': row.time_100ms,
+                    'cpu': row.cpu,
+                    'cpu_util': row.cpu_util
+                })
+            
+            if len(data) > 0:
+                print(f"   ✅ 获取到 {len(data)} 条CPU利用率数据")
+                return pd.DataFrame(data)
+            else:
+                print("   ⚠️  未获取到CPU利用率数据")
+                return pd.DataFrame()
+            
+        except Exception as e:
+            print(f"⚠️  获取CPU利用率数据时出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return pd.DataFrame()
+    
     def analyze(self, package_name):
         """
         执行完整分析
@@ -472,6 +529,20 @@ class ColdStartAnalyzer:
         else:
             print("⚠️  未获取到CPU调度数据")
         
+        # 8. 获取CPU利用率数据（扩展查询范围：前后各100%的启动时长，即前后各延伸一个完整的启动时长）
+        print("📈 提取CPU利用率数据...")
+        cpu_util_extend_ns = cold_start_duration_ns * 1.0 # 100%的启动时长
+        cpu_util_query_start = app_start_ns_orig - cpu_util_extend_ns
+        cpu_util_query_end = app_drawn_ns_orig + cpu_util_extend_ns
+        cpu_util_df = self.get_cpu_utilization_data(package_name, cpu_util_query_start, cpu_util_query_end)
+        if not cpu_util_df.empty:
+            # 将time_100ms转换为相对时间（秒）
+            # time_100ms是基于trace开始时间的100ms桶，需要转换为相对于app_start_ns_orig的时间
+            cpu_util_df['time_relative_s'] = (cpu_util_df['time_100ms'] * 1e8 - app_start_ns_orig) / 1e9
+            print(f"✅ 获取到 {len(cpu_util_df)} 条CPU利用率数据 (查询范围: {cpu_util_query_start/1e9:.3f}s前 ~ {cpu_util_query_end/1e9:.3f}s后)")
+        else:
+            print("⚠️  未获取到CPU利用率数据")
+        
         # 获取CPU和GPU的可用频率范围（保持原始单位，不进行转换）
         cpu_available_freqs = {}  # {cpu_id: {'min': min_freq, 'max': max_freq}}
         if not cpu_freq_df.empty and 'cpu' in cpu_freq_df.columns:
@@ -503,6 +574,7 @@ class ColdStartAnalyzer:
             'gpu_frequency': gpu_freq_df,
             'power': power_df,
             'cpu_scheduling': cpu_sched_df,
+            'cpu_utilization': cpu_util_df,
             'start_window_start_s': -duration_extend_ns / 1e9,  # 启动区间开始（相对时间）
             'start_window_end_s': cold_start_duration_ns / 1e9,  # 启动区间结束（相对时间，即启动时长）
             'cpu_available_frequencies': cpu_available_freqs,  # CPU可用频率范围
@@ -553,6 +625,11 @@ def analyze_cold_start_trace(trace_path, package_name, output_dir=None):
                 if not results['cpu_scheduling'].empty:
                     results['cpu_scheduling'].to_csv(
                         os.path.join(output_dir, 'cpu_scheduling.csv'), 
+                        index=False
+                    )
+                if not results['cpu_utilization'].empty:
+                    results['cpu_utilization'].to_csv(
+                        os.path.join(output_dir, 'cpu_utilization.csv'), 
                         index=False
                     )
             return results

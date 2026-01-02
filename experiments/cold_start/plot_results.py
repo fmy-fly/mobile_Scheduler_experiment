@@ -37,6 +37,7 @@ def load_analysis_results(results_dir_or_dict):
     gpu_freq_file = os.path.join(results_dir, 'gpu_frequency.csv')
     power_file = os.path.join(results_dir, 'power.csv')
     cpu_sched_file = os.path.join(results_dir, 'cpu_scheduling.csv')
+    cpu_util_file = os.path.join(results_dir, 'cpu_utilization.csv')
     if os.path.exists(cpu_freq_file):
         results['cpu_frequency'] = pd.read_csv(cpu_freq_file)
     if os.path.exists(gpu_freq_file):
@@ -45,6 +46,8 @@ def load_analysis_results(results_dir_or_dict):
         results['power'] = pd.read_csv(power_file)
     if os.path.exists(cpu_sched_file):
         results['cpu_scheduling'] = pd.read_csv(cpu_sched_file)
+    if os.path.exists(cpu_util_file):
+        results['cpu_utilization'] = pd.read_csv(cpu_util_file)
     
     return results
 
@@ -561,6 +564,103 @@ def plot_cpu_scheduling(results, output_path=None):
     plt.close()
 
 
+def plot_cpu_utilization(results, output_path=None):
+    """
+    绘制8个CPU利用率图（垂直堆叠，类似Perfetto风格）
+    每100毫秒时间窗口内每个CPU的利用率
+    
+    Args:
+        results: 分析结果字典
+        output_path: 输出图片路径
+    """
+    if 'cpu_utilization' not in results or results['cpu_utilization'].empty:
+        print("⚠️  无CPU利用率数据")
+        return
+    
+    cpu_util_df = results['cpu_utilization']
+    
+    # 获取所有CPU编号并排序
+    if 'cpu' in cpu_util_df.columns:
+        cpu_list = sorted(cpu_util_df['cpu'].unique())
+        cpu_list = cpu_list[:8]  # 最多8个CPU
+    else:
+        print("⚠️  CPU利用率数据中没有cpu列")
+        return
+    
+    # 创建垂直堆叠的子图（8行1列）
+    fig, axes = plt.subplots(len(cpu_list), 1, figsize=(14, 2.5 * len(cpu_list)), sharex=True)
+    
+    # 如果只有一个CPU，axes不是数组
+    if len(cpu_list) == 1:
+        axes = [axes]
+    
+    # 为每个CPU绘制图表
+    colors = plt.cm.tab10(np.linspace(0, 1, len(cpu_list)))
+    for idx, cpu in enumerate(cpu_list):
+        ax = axes[idx]
+        cpu_data = cpu_util_df[cpu_util_df['cpu'] == cpu].sort_values('time_relative_s')
+        
+        if len(cpu_data) > 0:
+            # 绘制利用率曲线（转换为百分比）
+            ax.plot(cpu_data['time_relative_s'], cpu_data['cpu_util'] * 100, 
+                   linewidth=1.5, color=colors[idx], label=f'CPU {int(cpu)}')
+            
+            # 标记启动区间
+            start_window_start = results.get('start_window_start_s', 0)
+            start_window_end = results.get('start_window_end_s', 0)
+            if start_window_end > 0:
+                # 添加半透明背景标记启动区间
+                ax.axvspan(0, start_window_end, alpha=0.2, color='yellow', label='启动区间')
+            
+            # 设置Y轴范围：利用率在0-100%之间
+            y_min = 0
+            y_max = min(100, cpu_data['cpu_util'].max() * 100 * 1.1)  # 添加10%边距，但不超过100%
+            if y_max < 10:
+                y_max = 100  # 如果最大值很小，显示到100%
+            ax.set_ylim(y_min, y_max)
+        else:
+            # 如果没有数据，设置默认范围
+            ax.set_ylim(0, 100)
+        
+        ax.set_ylabel(f'CPU {int(cpu)}\n利用率 (%)', fontsize=10, fontweight='bold')
+        ax.grid(True, alpha=0.3, linestyle='--')
+        # 只在第一个CPU的子图显示完整的图例（包含启动区间）
+        if idx == 0:
+            ax.legend(loc='upper right', fontsize=9)
+        else:
+            # 其他CPU只显示CPU标签，不显示启动区间标签（避免重复）
+            handles, labels = ax.get_legend_handles_labels()
+            # 只保留CPU相关的图例项
+            cpu_handles = [h for h, l in zip(handles, labels) if l.startswith('CPU')]
+            cpu_labels = [l for l in labels if l.startswith('CPU')]
+            if cpu_handles:
+                ax.legend(cpu_handles, cpu_labels, loc='upper right', fontsize=9)
+        # 确保Y轴刻度标签可见
+        ax.tick_params(axis='y', labelsize=9, left=True, labelleft=True)
+        ax.ticklabel_format(style='plain', axis='y', useOffset=False)  # 使用普通数字格式，不用科学计数法
+        # 确保Y轴标签显示（特别是前几个CPU）
+        ax.yaxis.set_visible(True)
+        plt.setp(ax.get_yticklabels(), visible=True)  # 强制显示Y轴刻度标签
+    
+    # 只在最下面的子图显示X轴标签
+    axes[-1].set_xlabel('时间 (秒)', fontsize=12, fontweight='bold')
+    
+    # 添加总标题
+    duration_ms = results.get('cold_start_duration_ms', 0)
+    duration_s = results.get('cold_start_duration_s', 0)
+    fig.suptitle(f'CPU利用率时间线 - 启动时长: {duration_ms:.2f} ms ({duration_s:.3f} 秒)', 
+                fontsize=14, fontweight='bold', y=0.995)
+    
+    # 调整布局，确保Y轴标签有足够空间显示（特别是前几个CPU）
+    plt.subplots_adjust(left=0.12, right=0.95, top=0.97, bottom=0.05, hspace=0.25)
+    
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"✅ CPU利用率图表已保存到: {output_path}")
+    
+    plt.close()
+
+
 def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     """
     绘制冷启动分析图表（生成多张独立图片）
@@ -585,6 +685,7 @@ def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     voltage_current_path = os.path.join(base_dir, f'{base_name}_voltage_current.png')
     power_path = os.path.join(base_dir, f'{base_name}_power.png')
     cpu_sched_path = os.path.join(base_dir, f'{base_name}_cpu_scheduling.png')
+    cpu_util_path = os.path.join(base_dir, f'{base_name}_cpu_utilization.png')
     
     # 1. CPU频率图（8个CPU垂直堆叠）
     plot_cpu_frequency(results, cpu_path)
@@ -601,6 +702,9 @@ def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     # 5. CPU调度图（显示app在哪个CPU上运行）
     plot_cpu_scheduling(results, cpu_sched_path)
     
+    # 6. CPU利用率图（8个CPU垂直堆叠）
+    plot_cpu_utilization(results, cpu_util_path)
+    
     print(f"\n✅ 所有图表已生成完成！")
     print(f"   - CPU频率: {cpu_path}")
     print(f"   - GPU频率: {gpu_path}")
@@ -608,6 +712,7 @@ def plot_cold_start_analysis(results, output_path=None, show_plot=True):
     print(f"   - 电流: {voltage_current_path.replace('.png', '_current.png')}")
     print(f"   - 功耗: {power_path}")
     print(f"   - CPU调度: {cpu_sched_path}")
+    print(f"   - CPU利用率: {cpu_util_path}")
 
 
 def plot_summary_statistics(results, output_path=None, show_plot=True):
