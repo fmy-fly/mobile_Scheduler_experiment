@@ -737,19 +737,25 @@ def plot_summary_statistics(results, output_path=None, show_plot=True):
     ax1.set_yticks([])
     ax1.grid(True, alpha=0.3, axis='x')
     
-    # 2. CPU频率统计
+    # 2. CPU频率统计（启动区间内）
     ax2 = axes[0, 1]
-    if 'cpu_frequency' in results and not results['cpu_frequency'].empty:
-        cpu_df = results['cpu_frequency']
-        avg_freq = cpu_df['frequency'].mean()
-        max_freq = cpu_df['frequency'].max()
-        min_freq = cpu_df['frequency'].min()
+    cpu_freq_startup_stats = results.get('cpu_freq_startup_stats', {})
+    if cpu_freq_startup_stats:
+        # 计算所有CPU的平均值
+        all_avg = [stats['avg'] for stats in cpu_freq_startup_stats.values()]
+        all_max = [stats['max'] for stats in cpu_freq_startup_stats.values()]
+        all_min = [stats['min'] for stats in cpu_freq_startup_stats.values()]
+        
+        avg_freq = sum(all_avg) / len(all_avg) if all_avg else 0
+        max_freq = max(all_max) if all_max else 0
+        min_freq = min(all_min) if all_min else 0
+        
         stats = ['平均频率', '最大频率', '最小频率']
         values = [avg_freq, max_freq, min_freq]
         colors = ['skyblue', 'orange', 'lightgreen']
         bars = ax2.bar(stats, values, color=colors, alpha=0.7)
         ax2.set_ylabel('频率', fontsize=11)
-        ax2.set_title('CPU频率统计', fontsize=12, fontweight='bold')
+        ax2.set_title('CPU频率统计（启动区间）', fontsize=12, fontweight='bold')
         ax2.grid(True, alpha=0.3, axis='y')
         # 添加数值标签
         for bar, val in zip(bars, values):
@@ -759,21 +765,21 @@ def plot_summary_statistics(results, output_path=None, show_plot=True):
     else:
         ax2.text(0.5, 0.5, '无数据', ha='center', va='center', 
                 transform=ax2.transAxes, fontsize=12)
-        ax2.set_title('CPU频率统计', fontsize=12, fontweight='bold')
+        ax2.set_title('CPU频率统计（启动区间）', fontsize=12, fontweight='bold')
     
-    # 3. GPU频率统计
+    # 3. GPU频率统计（启动区间内）
     ax3 = axes[1, 0]
-    if 'gpu_frequency' in results and not results['gpu_frequency'].empty:
-        gpu_df = results['gpu_frequency']
-        avg_freq = gpu_df['frequency'].mean()
-        max_freq = gpu_df['frequency'].max()
-        min_freq = gpu_df['frequency'].min()
+    gpu_freq_startup_stats = results.get('gpu_freq_startup_stats')
+    if gpu_freq_startup_stats:
+        avg_freq = gpu_freq_startup_stats['avg']
+        max_freq = gpu_freq_startup_stats['max']
+        min_freq = gpu_freq_startup_stats['min']
         stats = ['平均频率', '最大频率', '最小频率']
         values = [avg_freq, max_freq, min_freq]
         colors = ['salmon', 'coral', 'mistyrose']
         bars = ax3.bar(stats, values, color=colors, alpha=0.7)
         ax3.set_ylabel('频率', fontsize=11)
-        ax3.set_title('GPU频率统计', fontsize=12, fontweight='bold')
+        ax3.set_title('GPU频率统计（启动区间）', fontsize=12, fontweight='bold')
         ax3.grid(True, alpha=0.3, axis='y')
         # 添加数值标签
         for bar, val in zip(bars, values):
@@ -783,31 +789,79 @@ def plot_summary_statistics(results, output_path=None, show_plot=True):
     else:
         ax3.text(0.5, 0.5, '无数据', ha='center', va='center', 
                 transform=ax3.transAxes, fontsize=12)
-        ax3.set_title('GPU频率统计', fontsize=12, fontweight='bold')
+        ax3.set_title('GPU频率统计（启动区间）', fontsize=12, fontweight='bold')
     
-    # 4. 功耗统计
+    # 4. 功耗统计（启动区间内）
     ax4 = axes[1, 1]
-    if 'power' in results and not results['power'].empty:
-        power_df = results['power']
-        avg_current = power_df['current_ma'].mean()
-        max_current = power_df['current_ma'].max()
-        min_current = power_df['current_ma'].min()
+    # 使用启动区间内的统计值
+    avg_power_mw = results.get('avg_power_mw')
+    max_power_mw = results.get('max_power_mw')
+    min_power_mw = results.get('min_power_mw')
+    avg_current_ma = results.get('avg_current_ma')
+    max_current_ma = results.get('max_current_ma')
+    min_current_ma = results.get('min_current_ma')
+    total_power_j = results.get('total_power_consumption_j')
+    
+    if avg_power_mw is not None or max_power_mw is not None:
+        # 有功率数据，显示功率统计（启动区间内）
+        stats = ['平均功率', '最大功率', '最小功率', '总功耗']
+        values = [
+            avg_power_mw if avg_power_mw is not None else 0,
+            max_power_mw if max_power_mw is not None else 0,
+            min_power_mw if min_power_mw is not None else 0,
+            total_power_j if total_power_j is not None else 0
+        ]
+        colors = ['lightgreen', 'darkgreen', 'palegreen', 'orange']
+        # 创建两个y轴：一个用于功率，一个用于总功耗
+        ax4_twin = ax4.twinx()
+        
+        bars = ax4.bar(stats[:3], values[:3], color=colors[:3], alpha=0.7)
+        ax4.set_ylabel('功率 (mW)', fontsize=11, color='green')
+        ax4.tick_params(axis='y', labelcolor='green')
+        
+        # 总功耗单独显示（使用不同的y轴）
+        total_bar = ax4_twin.bar([stats[3]], [values[3]], color=colors[3], alpha=0.7, width=0.6)
+        ax4_twin.set_ylabel('总功耗 (J)', fontsize=11, color='orange')
+        ax4_twin.tick_params(axis='y', labelcolor='orange')
+        
+        ax4.set_title('功耗统计（启动区间）', fontsize=12, fontweight='bold')
+        ax4.grid(True, alpha=0.3, axis='y')
+        
+        # 添加数值标签
+        for bar, val in zip(bars, values[:3]):
+            if val > 0:
+                height = bar.get_height()
+                ax4.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{val:.1f} mW', ha='center', va='bottom', fontsize=9)
+        
+        # 总功耗标签
+        if total_power_j and total_power_j > 0:
+            height = total_bar[0].get_height()
+            ax4_twin.text(total_bar[0].get_x() + total_bar[0].get_width()/2., height,
+                        f'{total_power_j:.3f} J', ha='center', va='bottom', fontsize=9)
+    elif avg_current_ma is not None or max_current_ma is not None:
+        # 只有电流数据，显示电流统计（启动区间内）
         stats = ['平均电流', '最大电流', '最小电流']
-        values = [avg_current, max_current, min_current]
+        values = [
+            avg_current_ma if avg_current_ma is not None else 0,
+            max_current_ma if max_current_ma is not None else 0,
+            min_current_ma if min_current_ma is not None else 0
+        ]
         colors = ['lightgreen', 'darkgreen', 'palegreen']
         bars = ax4.bar(stats, values, color=colors, alpha=0.7)
         ax4.set_ylabel('电流 (mA)', fontsize=11)
-        ax4.set_title('功耗统计', fontsize=12, fontweight='bold')
+        ax4.set_title('功耗统计（启动区间）', fontsize=12, fontweight='bold')
         ax4.grid(True, alpha=0.3, axis='y')
         # 添加数值标签
         for bar, val in zip(bars, values):
-            height = bar.get_height()
-            ax4.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{val:.1f} mA', ha='center', va='bottom', fontsize=9)
+            if val > 0:
+                height = bar.get_height()
+                ax4.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{val:.1f} mA', ha='center', va='bottom', fontsize=9)
     else:
         ax4.text(0.5, 0.5, '无数据', ha='center', va='center', 
                 transform=ax4.transAxes, fontsize=12)
-        ax4.set_title('功耗统计', fontsize=12, fontweight='bold')
+        ax4.set_title('功耗统计（启动区间）', fontsize=12, fontweight='bold')
     
     plt.tight_layout()
     

@@ -1,4 +1,5 @@
 # 国内
+- play商店： com.android.vending
 - 支付宝：com.eg.android.AlipayGphone x
 - 抖音: com.ss.android.ugc.aweme
 - QQ： com.tencent.mobileqq
@@ -35,7 +36,9 @@
 - 王者荣耀： com.tencent.tmgp.sgame
 - 百度贴吧： com.baidu.tieba
 - 作业帮：com.baidu.homework
+
 # 国外
+
 - youtube: com.google.android.youtube
 - telegram: org.telegram.messenger
 - facebook: com.facebook.katana

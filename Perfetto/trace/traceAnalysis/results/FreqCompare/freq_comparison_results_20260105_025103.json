@@ -1,0 +1,50 @@
+{
+  "experiment_name": "FreqCompare",
+  "timestamp": "20260105_025103",
+  "apps": {
+    "微信": "com.tencent.mm"
+  },
+  "results": {
+    "微信": {
+      "package_name": "com.tencent.mm",
+      "configs": {
+        "默认调度": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_默认调度\\FreqCompare_微信_默认调度_20260105_024938.perfetto-trace",
+          "cold_start_duration_ms": 323.610352,
+          "cold_start_duration_s": 0.323610352,
+          "avg_power_mw": 1620.3333333333333,
+          "max_power_mw": 2311.0,
+          "min_power_mw": 239.0,
+          "total_power_consumption_j": 0.35802534126600005,
+          "avg_current_ma": -365.88533333333334,
+          "avg_voltage_v": 4.432333333333333
+        },
+        "最大频率": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_最大频率\\FreqCompare_微信_最大频率_20260105_025007.perfetto-trace",
+          "cold_start_duration_ms": 282.55721,
+          "cold_start_duration_s": 0.28255721,
+          "avg_power_mw": 4047.0,
+          "max_power_mw": 4238.0,
+          "min_power_mw": 3665.0,
+          "total_power_consumption_j": 0.8181212433075,
+          "avg_current_ma": -915.625,
+          "avg_voltage_v": 4.4206666666666665
+        },
+        "自定义频率": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_自定义频率\\FreqCompare_微信_自定义频率_20260105_025046.perfetto-trace",
+          "cold_start_duration_ms": 282.72994,
+          "cold_start_duration_s": 0.28272994,
+          "avg_power_mw": 3534.3333333333335,
+          "max_power_mw": 5921.0,
+          "min_power_mw": 2341.0,
+          "total_power_consumption_j": 0.6474658551079999,
+          "avg_current_ma": -801.3016666666666,
+          "avg_voltage_v": 4.417666666666666
+        }
+      }
+    }
+  }
+}

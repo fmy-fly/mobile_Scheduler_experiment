@@ -1,0 +1,50 @@
+{
+  "experiment_name": "FreqCompare",
+  "timestamp": "20260105_030029",
+  "apps": {
+    "微信": "com.tencent.mm"
+  },
+  "results": {
+    "微信": {
+      "package_name": "com.tencent.mm",
+      "configs": {
+        "默认调度": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_默认调度\\FreqCompare_微信_默认调度_20260105_025856.perfetto-trace",
+          "cold_start_duration_ms": 277.752034,
+          "cold_start_duration_s": 0.277752034,
+          "avg_power_mw": 1654.0,
+          "max_power_mw": 2511.0,
+          "min_power_mw": 797.0,
+          "total_power_consumption_j": 0.172959162074,
+          "avg_current_ma": -373.437,
+          "avg_voltage_v": 4.433
+        },
+        "最大频率": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_最大频率\\FreqCompare_微信_最大频率_20260105_025932.perfetto-trace",
+          "cold_start_duration_ms": 279.119141,
+          "cold_start_duration_s": 0.279119141,
+          "avg_power_mw": 3738.6666666666665,
+          "max_power_mw": 4196.0,
+          "min_power_mw": 3510.0,
+          "total_power_consumption_j": 0.7557317266560001,
+          "avg_current_ma": -847.6556666666667,
+          "avg_voltage_v": 4.411666666666666
+        },
+        "自定义频率": {
+          "status": "success",
+          "trace_file": "D:\\project\\Paper\\mobile_Scheduler_experiment\\Perfetto\\trace\\traceRecord\\methodFreqCompare_微信_自定义频率\\FreqCompare_微信_自定义频率_20260105_030012.perfetto-trace",
+          "cold_start_duration_ms": 288.984415,
+          "cold_start_duration_s": 0.288984415,
+          "avg_power_mw": 3167.0,
+          "max_power_mw": 6251.0,
+          "min_power_mw": 1625.0,
+          "total_power_consumption_j": 0.559523971596,
+          "avg_current_ma": -718.7496666666666,
+          "avg_voltage_v": 4.417
+        }
+      }
+    }
+  }
+}

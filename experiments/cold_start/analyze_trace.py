@@ -564,6 +564,114 @@ class ColdStartAnalyzer:
                 'max': max(gpu_freqs)
             }
         
+        # 计算启动区间内的功耗统计（平均、最大、最小、总功耗）
+        start_window_end_s = cold_start_duration_ns / 1e9  # 启动时长（秒）
+        
+        # 筛选启动区间内的功耗数据（time_relative_s在0到启动时长之间）
+        startup_power_df = power_df[
+            (power_df['time_relative_s'] >= 0) & 
+            (power_df['time_relative_s'] <= start_window_end_s)
+        ].copy() if not power_df.empty else pd.DataFrame()
+        
+        total_power_consumption_mj = None  # 总功耗（毫焦耳）
+        total_power_consumption_j = None  # 总功耗（焦耳）
+        avg_power_mw = None  # 平均功率（毫瓦）
+        max_power_mw = None  # 最大功率（毫瓦）
+        min_power_mw = None  # 最小功率（毫瓦）
+        avg_current_ma = None  # 平均电流（毫安）
+        max_current_ma = None  # 最大电流（毫安）
+        min_current_ma = None  # 最小电流（毫安）
+        avg_voltage_v = None  # 平均电压（伏特）
+        max_voltage_v = None  # 最大电压（伏特）
+        min_voltage_v = None  # 最小电压（伏特）
+        
+        if not startup_power_df.empty:
+            try:
+                # 计算功率统计（power_mw数据）
+                power_mw_data = startup_power_df[startup_power_df['power_source'].str.contains('power_mw', case=False, na=False)]
+                if not power_mw_data.empty:
+                    avg_power_mw = power_mw_data['current_ma'].mean()  # 实际是mW值
+                    max_power_mw = power_mw_data['current_ma'].max()
+                    min_power_mw = power_mw_data['current_ma'].min()
+                    
+                    # 计算总功耗（对功耗曲线积分）
+                    power_mw_data_sorted = power_mw_data.sort_values('timestamp_ns')
+                    power_values = power_mw_data_sorted['current_ma'].values
+                    time_values = power_mw_data_sorted['time_relative_s'].values
+                    
+                    # 使用梯形积分法计算总功耗
+                    # 手动实现梯形积分（兼容性更好）
+                    if len(power_values) > 1 and len(time_values) > 1:
+                        # 计算相邻时间点的平均值乘以时间间隔
+                        total_power_consumption_mj = 0.0
+                        for i in range(len(time_values) - 1):
+                            dt = time_values[i + 1] - time_values[i]  # 时间间隔（秒）
+                            avg_power = (power_values[i] + power_values[i + 1]) / 2.0  # 平均功率（mW）
+                            total_power_consumption_mj += avg_power * dt  # 能量（毫焦耳）
+                    else:
+                        total_power_consumption_mj = 0.0
+                    
+                    total_power_consumption_j = total_power_consumption_mj / 1000.0  # 转换为焦耳
+                    
+                    print(f"✅ 计算启动区间功耗统计:")
+                    print(f"   平均功率: {avg_power_mw:.1f} mW, 最大: {max_power_mw:.1f} mW, 最小: {min_power_mw:.1f} mW")
+                    print(f"   总功耗: {total_power_consumption_j:.3f} J (时间范围: 0 ~ {start_window_end_s:.3f}s)")
+                
+                # 计算电流统计（current_ua数据）
+                current_data = startup_power_df[startup_power_df['power_source'].str.contains('current_ua', case=False, na=False)]
+                if not current_data.empty:
+                    avg_current_ma = current_data['current_ma'].mean()
+                    max_current_ma = current_data['current_ma'].max()
+                    min_current_ma = current_data['current_ma'].min()
+                    print(f"✅ 启动区间电流统计: 平均: {avg_current_ma:.1f} mA, 最大: {max_current_ma:.1f} mA, 最小: {min_current_ma:.1f} mA")
+                
+                # 计算电压统计（voltage_uv数据）
+                voltage_data = startup_power_df[startup_power_df['power_source'].str.contains('voltage_uv', case=False, na=False)]
+                if not voltage_data.empty:
+                    # voltage_data['current_ma'] 实际存储的是电压值（伏特），因为在get_power_data中已经转换了
+                    avg_voltage_v = voltage_data['current_ma'].mean()
+                    max_voltage_v = voltage_data['current_ma'].max()
+                    min_voltage_v = voltage_data['current_ma'].min()
+                    print(f"✅ 启动区间电压统计: 平均: {avg_voltage_v:.3f} V, 最大: {max_voltage_v:.3f} V, 最小: {min_voltage_v:.3f} V")
+                    
+            except Exception as e:
+                print(f"⚠️  计算启动区间功耗统计时出错: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # 计算启动区间内的CPU和GPU频率统计
+        start_window_end_s = cold_start_duration_ns / 1e9
+        cpu_freq_startup_stats = {}  # {cpu_id: {'avg': ..., 'max': ..., 'min': ...}}
+        gpu_freq_startup_stats = None  # {'avg': ..., 'max': ..., 'min': ...}
+        
+        if not cpu_freq_df.empty:
+            # 筛选启动区间内的CPU频率数据
+            startup_cpu_freq_df = cpu_freq_df[
+                (cpu_freq_df['time_relative_s'] >= 0) & 
+                (cpu_freq_df['time_relative_s'] <= start_window_end_s)
+            ]
+            if not startup_cpu_freq_df.empty and 'cpu' in startup_cpu_freq_df.columns:
+                for cpu_id in startup_cpu_freq_df['cpu'].unique():
+                    cpu_data = startup_cpu_freq_df[startup_cpu_freq_df['cpu'] == cpu_id]
+                    cpu_freq_startup_stats[int(cpu_id)] = {
+                        'avg': cpu_data['frequency'].mean(),
+                        'max': cpu_data['frequency'].max(),
+                        'min': cpu_data['frequency'].min()
+                    }
+        
+        if not gpu_freq_df.empty:
+            # 筛选启动区间内的GPU频率数据
+            startup_gpu_freq_df = gpu_freq_df[
+                (gpu_freq_df['time_relative_s'] >= 0) & 
+                (gpu_freq_df['time_relative_s'] <= start_window_end_s)
+            ]
+            if not startup_gpu_freq_df.empty:
+                gpu_freq_startup_stats = {
+                    'avg': startup_gpu_freq_df['frequency'].mean(),
+                    'max': startup_gpu_freq_df['frequency'].max(),
+                    'min': startup_gpu_freq_df['frequency'].min()
+                }
+        
         # 汇总结果（使用转换后的真实时间戳）
         results = {
             'cold_start_duration_ms': cold_start_duration_ms,
@@ -575,6 +683,21 @@ class ColdStartAnalyzer:
             'power': power_df,
             'cpu_scheduling': cpu_sched_df,
             'cpu_utilization': cpu_util_df,
+            # 启动区间内的功耗统计
+            'total_power_consumption_mj': total_power_consumption_mj,  # 总功耗（毫焦耳）
+            'total_power_consumption_j': total_power_consumption_j,  # 总功耗（焦耳）
+            'avg_power_mw': avg_power_mw,  # 平均功率（毫瓦）
+            'max_power_mw': max_power_mw,  # 最大功率（毫瓦）
+            'min_power_mw': min_power_mw,  # 最小功率（毫瓦）
+            'avg_current_ma': avg_current_ma,  # 平均电流（毫安）
+            'max_current_ma': max_current_ma,  # 最大电流（毫安）
+            'min_current_ma': min_current_ma,  # 最小电流（毫安）
+            'avg_voltage_v': avg_voltage_v,  # 平均电压（伏特）
+            'max_voltage_v': max_voltage_v,  # 最大电压（伏特）
+            'min_voltage_v': min_voltage_v,  # 最小电压（伏特）
+            # 启动区间内的频率统计
+            'cpu_freq_startup_stats': cpu_freq_startup_stats,  # CPU频率统计（启动区间内）
+            'gpu_freq_startup_stats': gpu_freq_startup_stats,  # GPU频率统计（启动区间内）
             'start_window_start_s': -duration_extend_ns / 1e9,  # 启动区间开始（相对时间）
             'start_window_end_s': cold_start_duration_ns / 1e9,  # 启动区间结束（相对时间，即启动时长）
             'cpu_available_frequencies': cpu_available_freqs,  # CPU可用频率范围
