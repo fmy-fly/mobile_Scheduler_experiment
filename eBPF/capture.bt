@@ -1,0 +1,71 @@
+// 终极融合版：音频(sched) + UI(无视FD，只看内容)
+// 已移除头文件依赖，已移除 FD 限制
+
+BEGIN {
+    printf("Tracing... Unrestricted Mode.\n");
+    @last_audio_report = nsecs;
+}
+
+// ============================================================
+// 【模块 A】音频监测 (保持完美，不动)
+// ============================================================
+tracepoint:sched:sched_switch {
+    $comm = args->next_comm;
+    if (strncmp($comm, "audioserver", 11) == 0 || strncmp($comm, "Audio", 5) == 0) {
+        @audio_wake_count++;
+        $now = nsecs;
+        if ($now - @last_audio_report > 500000000) {
+            if (@audio_wake_count > 15) {
+                printf("sys_event:AUDIO_ACTIVE\n");
+            }
+            @audio_wake_count = 0;
+            @last_audio_report = $now;
+        }
+    }
+}
+
+// ============================================================
+// 【模块 B】UI 日志抓取 (暴力盲打)
+// 不检查 FD，只看内容是不是 "B|" 开头
+// ============================================================
+tracepoint:raw_syscalls:sys_enter {
+    // 1. 绝对屏蔽 audioserver (防止音频日志干扰)
+    if (comm == "audioserver" || comm == "AudioService") { return; }
+
+    $msg = "";
+    $part1 = "";
+    $part2 = "";
+
+    // --- 通道 1: 普通 write (ID 64) ---
+    if (args->id == 64) {
+        // 【关键修改】不检查 FD 了！直接读内容！
+        // 哪怕 args[1] 是乱码，str() 也会安全处理
+        $msg = str(uptr(args->args[1]));
+    }
+
+    // --- 通道 2: 向量 writev (ID 66) ---
+    if (args->id == 66) {
+        // 【关键修改】不检查 FD 了！
+        $vec = args->args[1];
+        
+        // 强制读取前3块
+        $addr0 = *(uint64*)uptr($vec); 
+        $msg = str(uptr($addr0));
+
+        $addr1 = *(uint64*)uptr($vec + 16);
+        $part1 = str(uptr($addr1));
+
+        $addr2 = *(uint64*)uptr($vec + 32);
+        $part2 = str(uptr($addr2));
+    }
+
+    // --- 统一输出 ---
+    // 唯一的过滤器：必须是 Trace 日志的格式 (B|...)
+    if (strncmp($msg, "B|", 2) == 0) {
+        // 再次过滤掉一些无用的系统噪音 (比如 urcc, Uah)
+        if (strncmp($msg, "B|1885", 6) != 0 && strncmp($msg, "B|3359", 6) != 0) {
+            // 输出给 Python
+            printf("{\"ts\": %d, \"pid\": %d, \"log\": \"%s%s%s\"}\n", nsecs, pid, $msg, $part1, $part2);
+        }
+    }
+}

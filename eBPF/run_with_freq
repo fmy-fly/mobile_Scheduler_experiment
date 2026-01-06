@@ -1,0 +1,1 @@
+atrace --async_stop > /dev/null 2>&1; atrace --async_start -b 4096 -c am wm input view res; export BPFTRACE_BTF=/root/vmlinux_btf; export BPFTRACE_MAX_STRLEN=200; bpftrace capture.bt | python3 -u live_analyzer_with_freq.py
