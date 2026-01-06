@@ -4,14 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="82fb436b-b37a-4435-b199-877c5837550b" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Experiment.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="82fb436b-b37a-4435-b199-877c5837550b" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -29,26 +22,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.analyze_cpu_frequency.executor": "Run",
-    "Python.extract_trace_time.executor": "Run",
-    "Python.frequency_monitor (1).executor": "Run",
-    "Python.frequency_monitor.executor": "Run",
-    "Python.getFPSInfo.executor": "Run",
-    "Python.getHardWareInfo (1).executor": "Run",
-    "Python.startPrefetto.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "master",
-    "last_opened_file_path": "E:/mobicom26/code/newTestbedProject",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.analyze_cpu_frequency.executor&quot;: &quot;Run&quot;,
+    &quot;Python.extract_trace_time.executor&quot;: &quot;Run&quot;,
+    &quot;Python.frequency_monitor (1).executor&quot;: &quot;Run&quot;,
+    &quot;Python.frequency_monitor.executor&quot;: &quot;Run&quot;,
+    &quot;Python.getFPSInfo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.getHardWareInfo (1).executor&quot;: &quot;Run&quot;,
+    &quot;Python.startPrefetto.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;E:/mobicom26/code/newTestbedProject&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="E:\mobicom26\code\Experiment" />
@@ -223,6 +216,7 @@
       <workItem from="1765874240830" duration="8297000" />
       <workItem from="1766381718125" duration="14000" />
       <workItem from="1766819141756" duration="4945000" />
+      <workItem from="1766971520591" duration="11730000" />
     </task>
     <servers />
   </component>

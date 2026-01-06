@@ -230,13 +230,17 @@ def run_cold_start_experiment(package_name, activity_name=None,
                                  f"method{experiment_name}", trace_filename)
         return trace_path if os.path.exists(trace_path) else None
     finally:
-        # 恢复频率设置（如果需要）
-        if (max_frequency or cpu_freq_settings or gpu_freq_setting) and original_freq_settings:
-            print("\n[恢复] 恢复CPU/GPU频率设置...")
+        # 恢复频率设置
+        # 注意：只有最大频率模式（通过ADB设置）才需要恢复
+        # 自定义频率模式（通过eBPF设置）不需要恢复，eBPF程序会自动停止
+        if max_frequency and original_freq_settings:
+            print("\n[恢复] 恢复CPU/GPU频率设置（ADB方式）...")
             try:
                 restore_all_frequencies(original_freq_settings)
             except Exception as e:
                 print(f"⚠️  恢复频率设置失败: {e}")
+        elif cpu_freq_settings or gpu_freq_setting:
+            print("\n[恢复] 使用eBPF方式，频率由eBPF程序自动管理，无需手动恢复")
 
 
 if __name__ == "__main__":

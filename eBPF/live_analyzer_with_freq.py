@@ -280,7 +280,7 @@ class StateMachine:
             if self.is_audio_active:
                 if time.time() - self.last_audio_signal_ts > AUDIO_TIMEOUT:
                     print(f"\033[33m>>> [停止] 音频结束\033[0m", flush=True)
-                    set_cpu_mode("normal")
+                    # set_cpu_mode("normal")  # 已关闭：只为app冷启动设置频率
                     self.is_audio_active = False
 
     def get_process_name(self, pid):
@@ -349,12 +349,12 @@ class StateMachine:
         try:
             line = line.strip()
             
-            # 1. 音频信号 (来自 Module A)
+            # 1. 音频信号 (来自 Module A) - 已关闭频率设置
             if line == "sys_event:AUDIO_ACTIVE":
                 self.last_audio_signal_ts = time.time()
                 if not self.is_audio_active:
                     print(f"\033[36m>>> [播放] 音频活跃\033[0m", flush=True)
-                    set_cpu_mode("boost")
+                    # set_cpu_mode("boost")  # 已关闭：只为app冷启动设置频率
                     self.is_audio_active = True
                 return
 
@@ -373,19 +373,19 @@ class StateMachine:
             content = entry['log'].split('|', 2)[2]
             pid = entry['pid']
             
-            # 输入法监测
+            # 输入法监测 - 已关闭频率设置
             if "showSoftInput" in content:
                 print(f"[输入法] 键盘弹出", flush=True)
-                set_cpu_mode("boost")
+                # set_cpu_mode("boost")  # 已关闭：只为app冷启动设置频率
                 return
 
             if "hideSoftInput" in content:
                 print(f"[输入法] 键盘收起", flush=True)
                 return
 
-            # 极速 UI 响应
+            # Activity启动 - 只保留时间段频率控制，关闭固定boost
             if "activityStart" in content:
-                set_cpu_mode("boost")
+                # set_cpu_mode("boost")  # 已关闭：只为app冷启动设置频率
                 # 尝试从activityStart中提取包名
                 # 格式: activityStart: cmp=com.tencent.mm/.ui.LauncherUI
                 if "cmp=" in content:
@@ -397,15 +397,20 @@ class StateMachine:
                             if self.freq_controller:
                                 self.freq_controller.stop()
                             
-                            # 创建新的频率控制器
+                            # 创建新的频率控制器（时间段频率控制）
                             self.freq_controller = FrequencyController(package_name)
                             self.freq_controller.start()
                     except:
                         pass
             
+            # 触摸事件检测（已关闭频率提升）
+            # if "dispatchInputEvent" in content:
+            #     if time.time() - self.last_input_time > 0.5:
+            #         set_cpu_mode("boost")
+            #     self.last_input_time = time.time()
+            
+            # 仅用于滑动检测的时间戳更新（不触发频率设置）
             if "dispatchInputEvent" in content:
-                if time.time() - self.last_input_time > 0.5:
-                    set_cpu_mode("boost")
                 self.last_input_time = time.time()
 
             # 获取进程名

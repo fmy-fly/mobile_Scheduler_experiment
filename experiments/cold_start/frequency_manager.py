@@ -42,6 +42,8 @@ def set_all_frequencies_to_max():
     """
     设置所有CPU和GPU到最大频率
     
+    注意：最大频率模式仍然通过ADB设置（不使用eBPF）
+    
     Returns:
         dict: 包含原始频率设置，用于恢复
     """
@@ -78,9 +80,19 @@ def restore_all_frequencies(original_settings=None):
     """
     恢复所有频率设置
     
+    注意：
+    - 如果使用最大频率模式（通过ADB设置），这里会恢复频率
+    - 如果使用自定义频率模式（通过eBPF设置），eBPF程序会自动停止，频率会自动恢复
+    
     Args:
-        original_settings: 保留参数以兼容旧代码，但不再使用（现在直接从设备读取可用频率）
+        original_settings: 原始频率设置（用于ADB方式恢复），如果为None则从设备读取
     """
+    # 只有当original_settings不为None时，说明是通过ADB设置的最大频率，需要恢复
+    # 如果original_settings为None，说明是使用eBPF方式，eBPF程序会自动处理，这里不需要恢复
+    if original_settings is None:
+        print("📱 使用eBPF方式，频率由eBPF程序自动管理，无需手动恢复")
+        return
+    
     # 恢复CPU频率（使用experiments.cpu模块）
     if _CPU_MODULE_AVAILABLE:
         try:
@@ -99,7 +111,7 @@ def restore_all_frequencies(original_settings=None):
     else:
         print("⚠️  GPU频率管理模块不可用，跳过GPU频率恢复")
     
-    print("✅ 频率设置已恢复")
+    print("✅ 频率设置已恢复（ADB方式）")
 
 
 def get_available_cpu_frequencies(cpu_id):
@@ -317,32 +329,33 @@ def set_custom_frequencies(cpu_freq_settings=None, gpu_freq_setting=None):
     """
     设置自定义CPU和GPU频率
     
+    注意：现在频率设置通过eBPF程序实时控制，这里不通过ADB设置频率
+    而是使用默认调度方式，让eBPF程序在检测到app启动时自动设置频率
+    
     Args:
         cpu_freq_settings: dict，格式为 {policy_id: freq_khz} 或 {policy_id: {'min': min_khz, 'max': max_khz}}
+                          如果是时间段配置: {"time_based": True, "periods": [...]}
         gpu_freq_setting: int/float (Hz) 或 dict {'min': min_hz, 'max': max_hz}
     
     Returns:
-        dict: 原始频率设置，用于恢复
+        None: 因为使用eBPF实时控制，不需要保存原始设置用于恢复
     """
-    original_settings = {
-        'cpu_freqs': None,
-        'gpu_freq': None
-    }
+    # 检查是否是时间段配置
+    is_time_based = False
+    if cpu_freq_settings and isinstance(cpu_freq_settings, dict) and cpu_freq_settings.get("time_based"):
+        is_time_based = True
     
-    if cpu_freq_settings:
-        # 检查是否是时间段配置
-        if isinstance(cpu_freq_settings, dict) and cpu_freq_settings.get("time_based"):
-            # 时间段配置在启动过程中动态设置，这里只保存原始设置
-            original_settings['cpu_freqs'] = {}
-            original_settings['gpu_freq'] = None
-        else:
-            original_settings['cpu_freqs'] = set_cpu_frequencies(cpu_freq_settings)
+    if is_time_based:
+        print("\n📱 使用eBPF实时频率控制（时间段频率模式）")
+        print("   💡 频率将由eBPF程序根据时间段自动设置，无需通过ADB设置")
+    elif cpu_freq_settings or gpu_freq_setting:
+        print("\n📱 使用eBPF实时频率控制（自定义频率模式）")
+        print("   💡 频率将由eBPF程序自动设置，无需通过ADB设置")
+    else:
+        print("\n📱 使用默认调度方式")
     
-    if gpu_freq_setting and not (cpu_freq_settings and cpu_freq_settings.get("time_based")):
-        original_settings['gpu_freq'] = set_gpu_frequency(gpu_freq_setting)
-    
-    print("\n✅ 自定义频率设置完成")
-    return original_settings
+    # 不通过ADB设置频率，返回None表示使用默认调度（eBPF会自动处理）
+    return None
 
 
 def set_time_based_frequencies(periods, app_start_time_ns, current_time_ns):

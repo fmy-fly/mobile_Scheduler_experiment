@@ -57,6 +57,13 @@ APPS = {
 }
 
 # ====== 每个App的个性化频率配置 ======
+# ⚠️  重要提示：现在频率设置通过eBPF程序实时控制，不通过ADB设置
+# 
+# 使用方式：
+# 1. 确保eBPF程序已在手机端运行（通过 eBPF/run_with_freq 脚本）
+# 2. 确保此处的配置与 eBPF/freq_config.py 中的 APP_FREQ_CONFIGS 保持一致
+# 3. eBPF程序会自动检测app启动并根据配置设置频率（实时，无延迟）
+#
 # 格式: {app_name: {"cpu_freq_settings": {...}, "gpu_freq_setting": ...}}
 # 
 # CPU频率设置（KHz单位）：
@@ -66,17 +73,17 @@ APPS = {
 #     例如: {"0": {"min": 1200000, "max": 2300000}}
 #   - 格式3（时间段频率）: {"time_based": True, "periods": [...]}
 #     例如: {"time_based": True, "periods": [
-#         {"start": 0.0, "end": 0.2, "cpu_freq": {"0": 1800000, "4": 2300000}, "gpu_freq": 150000000},
-#         {"start": 0.2, "end": 0.4, "cpu_freq": {"0": 1500000, "4": 2000000}, "gpu_freq": 100000000}
+#         {"start": 0.0, "end": 0.2, "cpu_freq": {"0": 1800000, "4": 2300000}, "gpu_freq": 850000},
+#         {"start": 0.2, "end": 0.4, "cpu_freq": {"0": 1500000, "4": 2000000}, "gpu_freq": 521000}
 #     ]}
-#     说明: start/end是相对于App启动时间的秒数
+#     说明: start/end是相对于App启动时间的秒数，eBPF程序会自动根据时间段切换频率
 #
 # GPU频率设置（Hz单位）：
-#   - 单个数值（固定频率）: 150000000
-#   - 范围设置（dict）: {"min": 100000000, "max": 850000000}
+#   - 单个数值（固定频率）: 850000 (表示850 MHz)
+#   - 范围设置（dict）: {"min": 150000, "max": 850000}
 #   - 如果使用时间段频率配置，GPU频率在periods中指定
 #
-# 如果某个App的配置为None，表示使用默认频率（系统调度）
+# 如果某个App的配置为None，表示使用默认频率（系统调度，eBPF程序不会设置频率）
 # 如果某个App不在这个字典中，也会使用默认频率
 #
 # ====== 频率配置策略说明 ======
@@ -332,9 +339,9 @@ def batch_test_apps(apps=None,
     print(f"📋 测试App数量: {len(apps)}")
     
     if max_frequency:
-        print(f"⚙️  频率模式: 最大频率（覆盖所有App的个性化配置）")
+        print(f"⚙️  频率模式: 最大频率（通过ADB设置，覆盖所有App的个性化配置）")
     else:
-        print(f"⚙️  频率模式: 每个App使用个性化配置")
+        print(f"⚙️  频率模式: 每个App使用个性化配置（通过eBPF程序实时设置）")
         # 显示每个App的配置
         for app_name in apps.keys():
             if app_name in APP_FREQ_CONFIGS:
@@ -366,24 +373,31 @@ def batch_test_apps(apps=None,
         
         try:
             # 确定当前App的频率配置
+            # 注意：现在频率设置通过eBPF程序实时控制，不通过ADB设置
+            # eBPF程序会从 eBPF/freq_config.py 读取配置并自动设置频率
             if max_frequency:
                 # 使用最大频率模式（覆盖所有个性化配置）
+                # eBPF程序需要设置为max模式（需要在eBPF/freq_config.py中配置FREQ_MODE="max"）
                 app_max_freq = True
                 app_cpu_settings = None
                 app_gpu_setting = None
             elif app_name in APP_FREQ_CONFIGS:
                 # 使用该App的个性化配置
+                # 注意：配置需要与 eBPF/freq_config.py 中的 APP_FREQ_CONFIGS 保持一致
+                # eBPF程序会自动从 freq_config.py 读取配置并设置频率
                 app_config = APP_FREQ_CONFIGS[app_name]
                 app_max_freq = False
                 app_cpu_settings = app_config.get("cpu_freq_settings")
                 app_gpu_setting = app_config.get("gpu_freq_setting")
             else:
-                # App未配置，使用默认频率
+                # App未配置，使用默认频率（eBPF程序不会设置频率，使用系统默认调度）
                 app_max_freq = False
                 app_cpu_settings = None
                 app_gpu_setting = None
             
             # 运行实验
+            # 注意：set_custom_frequencies() 现在不通过ADB设置频率，而是依赖eBPF程序
+            # 确保eBPF程序已在手机端运行（通过 run_with_freq 脚本）
             trace_file = run_cold_start_experiment(
                 package_name=package_name,
                 experiment_name=f"{experiment_name}_{app_name}",

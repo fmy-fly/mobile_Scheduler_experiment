@@ -1,1 +1,22 @@
-atrace --async_stop > /dev/null 2>&1; atrace --async_start -b 4096 -c am wm input view res; export BPFTRACE_BTF=/root/vmlinux_btf; export BPFTRACE_MAX_STRLEN=200; bpftrace capture.bt | python3 -u live_analyzer_with_freq.py
+#!/bin/bash
+# eBPF频率控制程序启动脚本
+# 支持与Perfetto同时运行，共享atrace数据
+
+# 检查perfetto是否在运行
+if pgrep -f "perfetto" > /dev/null 2>&1; then
+    # Perfetto正在运行，不停止atrace以避免冲突
+    # 只尝试启动atrace（如果未启动），如果已启动则忽略错误
+    echo "检测到Perfetto正在运行，不停止atrace以避免冲突" >&2
+    atrace --async_start -b 4096 -c am wm input view res 2>/dev/null || true
+else
+    # Perfetto未运行，可以安全地停止和重启atrace
+    atrace --async_stop > /dev/null 2>&1
+    atrace --async_start -b 4096 -c am wm input view res
+fi
+
+# 设置bpftrace环境变量
+export BPFTRACE_BTF=/root/vmlinux_btf
+export BPFTRACE_MAX_STRLEN=200
+
+# 启动bpftrace并传递给Python分析器
+bpftrace capture.bt | python3 -u live_analyzer_with_freq.py
